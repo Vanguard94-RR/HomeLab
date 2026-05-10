@@ -1,0 +1,42 @@
+# Default values for homepage
+replicaCount: 1
+
+image:
+  repository: 192.168.1.91:32500/homepage
+  pullPolicy: Always
+  tag: "latest"
+
+# Service configuration
+service:
+  type: NodePort
+  port: 3000
+  nodePort: 32300
+
+# Resource limits and requests
+resources:
+  limits:
+    cpu: 500m
+    memory: 512Mi
+  requests:
+    cpu: 250m
+    memory: 256Mi
+
+# Persistence via Longhorn
+persistence:
+  enabled: true
+  storageClass: "longhorn"
+  accessMode: ReadWriteOnce
+  size: 500Mi
+
+# Environment variables
+env:
+  - name: HOMEPAGE_ALLOWED_HOSTS
+    value: "192.168.1.91:32300"
+  - name: PUID
+    value: "1000"
+  - name: PGID
+    value: "1000"
+
+# Config files (these create ConfigMaps)
+config:
+  allowedHosts: "192.168.1.91:32300"

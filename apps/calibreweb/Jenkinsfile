@@ -1,0 +1,86 @@
+pipeline {
+    agent any
+    
+    environment {
+        REGISTRY = "192.168.1.91:32500"
+        IMAGE_NAME = "calibreweb"
+        IMAGE_TAG = "${BUILD_NUMBER}"
+        WORK_DIR = "/home/admin/Documents/HomeLab/CalibreWeb"
+        HELM_CHART = "/home/admin/Documents/HomeLab/Helm-Charts/calibreweb"
+        NAMESPACE = "calibreweb"
+    }
+    
+    stages {
+        stage("Build") {
+            steps {
+                script {
+                    echo "Building Docker image..."
+                    sh """
+                    cd ${WORK_DIR}
+                    docker build -t ${REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG} .
+                    docker tag ${REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG} ${REGISTRY}/${IMAGE_NAME}:latest
+                    """
+                }
+            }
+        }
+        
+        stage("Push") {
+            steps {
+                script {
+                    echo "Pushing image to registry..."
+                    sh """
+                    docker push ${REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG}
+                    docker push ${REGISTRY}/${IMAGE_NAME}:latest
+                    """
+                }
+            }
+        }
+        
+        stage("Deploy to Kubernetes") {
+            steps {
+                script {
+                    echo "Deploying to Kubernetes with Helm..."
+                    sh """
+                    helm upgrade calibreweb ${HELM_CHART} \\
+                        -n ${NAMESPACE} \\
+                        --set image.tag=${IMAGE_TAG}
+                    """
+                }
+            }
+        }
+        
+        stage("Restart Deployment") {
+            steps {
+                script {
+                    echo "Restarting deployment to pull new image..."
+                    sh """
+                    kubectl rollout restart deployment/calibreweb -n ${NAMESPACE}
+                    kubectl rollout status deployment/calibreweb -n ${NAMESPACE} --timeout=5m
+                    """
+                }
+            }
+        }
+        
+        stage("Verify Deployment") {
+            steps {
+                script {
+                    echo "Verifying deployment..."
+                    sh """
+                    kubectl get pods -n ${NAMESPACE}
+                    kubectl get svc -n ${NAMESPACE}
+                    echo "CalibreWeb available at: http://192.168.1.91:30830"
+                    """
+                }
+            }
+        }
+    }
+    
+    post {
+        success {
+            echo "✓ Pipeline completed successfully!"
+        }
+        failure {
+            echo "✗ Pipeline failed!"
+        }
+    }
+}

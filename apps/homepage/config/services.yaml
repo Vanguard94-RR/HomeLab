@@ -1,0 +1,35 @@
+---
+# For configuration options and examples, please see:
+# https://gethomepage.dev/configs/services/
+
+- DevSecOps:
+    - Proxmox Server:
+        href: http://192.168.1.65:8006/
+        description: Proxmox VE
+
+- My Second Group:
+    - My Second Service:
+        href: http://localhost/
+        description: Homepage is the best
+
+- SysAdmin:
+    - Cockpit:
+        href: http://192.168.1.65:9090/
+        description: Homepage is 😎
+    - Jenkins:
+        href: http://192.168.1.91:32000/
+        description: Jenkis
+    - K8s Master Node:
+        href: http://192.168.1.91:9090/  
+        description: Masternode
+    - K8s Storage UI:
+        href: http://192.168.1.91:32100/
+        description: LongHorn Storage
+    - K8s Dashboard UI:
+        href: http://192.168.1.91:32700/
+        description: Headlamp UI
+
+- Library:
+    - Calibre:
+        href: http://localhost:8083/
+        description: Homepage is awesome

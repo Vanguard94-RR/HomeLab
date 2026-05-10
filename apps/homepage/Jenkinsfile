@@ -1,0 +1,45 @@
+pipeline {
+
+  agent any
+
+  environment {
+    VAULT_ADDR = "http://vault.vault.svc.cluster.local:8200"
+  }
+
+  stages {
+
+    stage('Vault Login') {
+      steps {
+
+        script {
+
+          env.VAULT_TOKEN = sh(
+            script: '''
+              vault write -field=token auth/kubernetes/login \
+                role=jenkins \
+                jwt=$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)
+            ''',
+            returnStdout: true
+          ).trim()
+        }
+      }
+    }
+
+    stage('Read GitHub Secret') {
+      steps {
+
+        sh '''
+          export VAULT_TOKEN=$VAULT_TOKEN
+
+          vault kv get secret/github
+        '''
+      }
+    }
+
+    stage('Build') {
+      steps {
+        echo "Building HomeLab..."
+      }
+    }
+  }
+}

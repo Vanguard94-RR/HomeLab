@@ -1,0 +1,23 @@
+---
+# For configuration options and examples, please see:
+# https://gethomepage.dev/configs/bookmarks
+
+- Developer:
+    - Github:
+        - abbr: GH
+          href: https://github.com/Vanguard94-RR?tab=repositories
+
+- Social:
+    - Reddit:
+        - abbr: RE
+          href: https://reddit.com/
+
+    - LinkedIn:
+        - abbr: LK
+          href: https://www.linkedin.com/in/juan-manuel-cortes-martinez/
+          # icon: https://github.com/homarr-labs/dashboard-icons/blob/main/svg/linkedin.svg
+
+- Entertainment:
+    - YouTube:
+        - abbr: YT
+          href: https://youtube.com/

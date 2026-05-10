@@ -1,0 +1,60 @@
+image:
+  repository: lscr.io/linuxserver/calibre-web
+  pullPolicy: IfNotPresent
+  tag: "latest"
+
+replicaCount: 1
+
+service:
+  type: NodePort
+  port: 8083
+  nodePort: 30830
+
+ingress:
+  enabled: false
+
+persistence:
+  enabled: true
+  storageClass: longhorn
+  accessMode: ReadWriteOnce
+  
+  # Rutas en el host
+  hostBooksPath: /DATA/Biblioteca/Biblioteca-de-calibre
+  hostConfigPath: /DATA/Biblioteca
+
+pvc:
+  books:
+    name: calibreweb-books
+    size: 50Gi
+  
+  config:
+    name: calibreweb-config
+    size: 5Gi
+
+environment:
+  PUID: 1000
+  PGID: 1000
+  TZ: "Etc/UTC"
+  OAUTHLIB_RELAX_TOKEN_SCOPE: "1"
+
+resources:
+  requests:
+    cpu: "100m"
+    memory: "512Mi"
+  limits:
+    cpu: "1000m"
+    memory: "2Gi"
+
+nodeSelector: {}
+
+tolerations: []
+
+affinity: {}
+
+securityContext:
+  runAsNonRoot: false
+  fsGroup: 1000
+
+containerSecurityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: false

@@ -1,0 +1,19 @@
+---
+version: "3.3"
+services:
+  homepage:
+    image: ghcr.io/gethomepage/homepage:latest
+    container_name: homepage
+    environment:
+      - HOMEPAGE_ALLOWED_HOSTS=gethomepage.dev
+      - PUID=1000
+      - PGID=1000
+    volumes:
+      - ./config:/app/config:rw
+      - /var/run/docker.sock:/var/run/docker.sock
+    command: ["node","server.js"]
+    ports:
+      - 3000:3000
+    restart: unless-stopped
+
+# No named volumes required for live bind-mount of ./config

@@ -1,0 +1,43 @@
+pipeline {
+    agent any
+    
+    stages {
+        stage('Trigger Build on Host') {
+            steps {
+                script {
+                    echo 'Triggering build script on host...'
+                    sh '''
+                        kubectl exec -n default deployment/build-agent -- /bin/sh -c '
+                            cd /workspace/HomePage &&
+                            docker build -t 192.168.1.91:32500/homepage:latest . &&
+                            docker push 192.168.1.91:32500/homepage:latest &&
+                            helm upgrade --install homepage /workspace/Helm-Charts/homepage --wait
+                        '
+                    '''
+                }
+            }
+        }
+        
+        stage('Verify Deployment') {
+            steps {
+                script {
+                    sh '''
+                        kubectl wait --for=condition=available --timeout=300s deployment/homepage -n homepage || true
+                        kubectl get pods -n homepage
+                        kubectl get svc -n homepage
+                    '''
+                }
+            }
+        }
+    }
+    
+    post {
+        success {
+            echo '✓ Homepage deployed successfully!'
+            echo 'Access at: http://192.168.1.91:32300'
+        }
+        failure {
+            echo '✗ Deployment failed!'
+        }
+    }
+}

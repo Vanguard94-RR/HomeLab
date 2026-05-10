@@ -1,0 +1,12 @@
+defaultSettings:
+  defaultDataPath: /var/lib/longhorn
+  defaultReplicaCount: 1
+
+service:
+  ui:
+    type: NodePort
+    nodePort: 32100
+
+persistence:
+  defaultClass: true
+  defaultClassReplicaCount: 1

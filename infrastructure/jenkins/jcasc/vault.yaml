@@ -1,0 +1,5 @@
+unclassified:
+  hashicorpVault:
+    configuration:
+      vaultUrl: "http://vault.vault.svc.cluster.local:8200"
+      vaultCredentialId: "vault-token"

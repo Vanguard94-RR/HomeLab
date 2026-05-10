@@ -1,0 +1,43 @@
+# Homepage Production Environment
+environment: prod
+namespace: homepage
+
+replicaCount: 2
+
+image:
+  repository: 192.168.1.91:32500/homepage
+  tag: latest
+  pullPolicy: IfNotPresent
+
+service:
+  type: NodePort
+  port: 3000
+  nodePort: 32300
+
+resources:
+  limits:
+    cpu: 2000m
+    memory: 2Gi
+  requests:
+    cpu: 500m
+    memory: 512Mi
+
+persistence:
+  enabled: true
+  storageClass: longhorn
+  size: 2Gi
+  accessMode: ReadWriteOnce
+
+env:
+  - name: HOMEPAGE_ALLOWED_HOSTS
+    value: "192.168.1.91:32300"
+  - name: PUID
+    value: "1000"
+  - name: PGID
+    value: "1000"
+
+# Production uses ConfigMaps from files
+useExternalConfigMaps: true
+
+config:
+  allowedHosts: "192.168.1.91:32300"
