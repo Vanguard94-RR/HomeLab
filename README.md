@@ -7,7 +7,6 @@ Infraestructura personal basada en Kubernetes + Jenkins + Helm + GitOps.
 - apps/: aplicaciones desplegadas
 - infrastructure/: charts, storage y networking
 - scripts/: automatización y deployment helpers
-- backups/: respaldos operativos
 - docs/: documentación técnica
 
 ## Apps
