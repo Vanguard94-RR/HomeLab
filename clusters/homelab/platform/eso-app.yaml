@@ -1,28 +1,24 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
-
 metadata:
-  name: jenkins
+  name: external-secrets
   namespace: argocd
-
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
 spec:
   project: default
 
   source:
-    repoURL: https://charts.jenkins.io
-    chart: jenkins
-    targetRevision: 5.8.110
-
+    repoURL: https://charts.external-secrets.io
+    chart: external-secrets
+    targetRevision: 2.3.0
     helm:
       values: |
-        controller:
-          serviceAccount:
-            create: true
-            name: jenkins
+        installCRDs: true
 
   destination:
     server: https://kubernetes.default.svc
-    namespace: ci-cd
+    namespace: external-secrets
 
   syncPolicy:
     automated:

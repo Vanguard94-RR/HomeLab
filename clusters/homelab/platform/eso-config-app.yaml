@@ -1,28 +1,21 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
-
 metadata:
-  name: jenkins
+  name: external-secrets-config
   namespace: argocd
-
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
 spec:
   project: default
 
   source:
-    repoURL: https://charts.jenkins.io
-    chart: jenkins
-    targetRevision: 5.8.110
-
-    helm:
-      values: |
-        controller:
-          serviceAccount:
-            create: true
-            name: jenkins
+    repoURL: https://github.com/Vanguard94-RR/HomeLab.git
+    targetRevision: main
+    path: clusters/homelab/platform/eso-config
 
   destination:
     server: https://kubernetes.default.svc
-    namespace: ci-cd
+    namespace: external-secrets
 
   syncPolicy:
     automated:
@@ -30,3 +23,4 @@ spec:
       selfHeal: true
     syncOptions:
       - CreateNamespace=true
+      - SkipDryRunOnMissingResource=true

@@ -101,20 +101,33 @@ echo "========================================="
 echo "Write Jenkins Policy"
 echo "========================================="
 
-POLICY_FILE="${ROOT_DIR}/infrastructure/policies/vault/jenkins-policy.hcl"
+JENKINS_POLICY_FILE="${ROOT_DIR}/platform/vault/policies/jenkins-policy.hcl"
 
 kubectl cp \
-  "${POLICY_FILE}" \
+  "${JENKINS_POLICY_FILE}" \
   vault/vault-0:/tmp/jenkins-policy.hcl
 
 kubectl exec -n ${NAMESPACE} vault-0 -- \
   vault policy write jenkins /tmp/jenkins-policy.hcl
 
 echo "========================================="
+echo "Write External Secrets Policy"
+echo "========================================="
+
+ESO_POLICY_FILE="${ROOT_DIR}/platform/vault/policies/external-secrets-policy.hcl"
+
+kubectl cp \
+  "${ESO_POLICY_FILE}" \
+  vault/vault-0:/tmp/external-secrets-policy.hcl
+
+kubectl exec -n ${NAMESPACE} vault-0 -- \
+  vault policy write external-secrets /tmp/external-secrets-policy.hcl
+
+echo "========================================="
 echo "Configure Kubernetes Auth"
 echo "========================================="
 
-TOKEN_REVIEW_JWT=$(kubectl create token default -n vault)
+TOKEN_REVIEW_JWT=$(kubectl create token vault-token-reviewer -n vault)
 
 KUBE_HOST=$(kubectl config view --raw --minify \
   --output 'jsonpath={.clusters[0].cluster.server}')
@@ -139,6 +152,18 @@ kubectl exec -n ${NAMESPACE} vault-0 -- \
     bound_service_account_namespaces=ci-cd \
     audience=vault \
     policies=jenkins \
+    ttl=24h
+
+echo "========================================="
+echo "Create External Secrets Role"
+echo "========================================="
+
+kubectl exec -n ${NAMESPACE} vault-0 -- \
+  vault write auth/kubernetes/role/external-secrets \
+    bound_service_account_names=external-secrets \
+    bound_service_account_namespaces=external-secrets \
+    audience=vault \
+    policies=external-secrets \
     ttl=24h
 
 echo "========================================="
