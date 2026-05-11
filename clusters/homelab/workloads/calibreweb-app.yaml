@@ -1,7 +1,7 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: homelab-root
+  name: calibreweb
   namespace: argocd
 spec:
   project: default
@@ -9,13 +9,15 @@ spec:
   source:
     repoURL: https://github.com/Vanguard94-RR/HomeLab.git
     targetRevision: main
-    path: clusters/homelab
+    path: helm/custom/calibreweb
 
   destination:
     server: https://kubernetes.default.svc
-    namespace: argocd
+    namespace: calibreweb
 
   syncPolicy:
     automated:
       prune: true
       selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

@@ -20,12 +20,14 @@ backups/
 *.bak
 archive/
 .vault-unseal-key
+
 # ==========================================
 # Vault sensitive files
 # ==========================================
 vault-init.txt
 unseal-keys.txt
 *.seal
+.GitHubToken
 
 # ==========================================
 # Terraform
