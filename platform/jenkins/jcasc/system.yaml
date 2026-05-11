@@ -1,2 +1,6 @@
 jenkins:
-  systemMessage: "HomeLab Jenkins managed by JCasC"
+  systemMessage: "HomeLab Jenkins"
+
+  numExecutors: 2
+
+  mode: NORMAL

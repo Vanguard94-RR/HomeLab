@@ -1,5 +1,16 @@
+credentials:
+  system:
+    domainCredentials:
+      - credentials:
+          - string:
+              scope: GLOBAL
+              id: "vault-token"
+              secret: "REPLACE_WITH_REAL_VAULT_TOKEN"
+              description: "Vault Token"
+
 unclassified:
   hashicorpVault:
     configuration:
       vaultUrl: "http://vault.vault.svc.cluster.local:8200"
+      engineVersion: 2
       vaultCredentialId: "vault-token"

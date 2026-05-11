@@ -1,0 +1,7 @@
+jenkins:
+  labelString: "master"
+
+unclassified:
+  location:
+    adminAddress: "admin@homelab.local"
+    url: "http://jenkins.homelab.local"

@@ -1,0 +1,4 @@
+appearance:
+  themeManager:
+    disableUserThemes: true
+    theme: "darkSystem"
