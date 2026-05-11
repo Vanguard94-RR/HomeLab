@@ -19,6 +19,7 @@ backups/
 *.tar.gz
 *.bak
 archive/
+.vault-unseal-key
 # ==========================================
 # Vault sensitive files
 # ==========================================
