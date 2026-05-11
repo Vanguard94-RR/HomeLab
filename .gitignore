@@ -15,6 +15,9 @@ rendered.yaml
 *.bak
 *.backup
 *.old
+backups/
+*.tar.gz
+*.bak
 
 # ==========================================
 # Vault sensitive files
