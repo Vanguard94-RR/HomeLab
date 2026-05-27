@@ -65,9 +65,9 @@ const MACHINES = [
   { id:"m720q",  name:"Lenovo M720q",          role:"Core Router / Firewall",          badge:"CORE",      pal:"teal",
     cpu:"Intel Core i5-8500T (6C/6T, 2.1–3.5GHz, 8th Gen)", ram:"32GB DDR4 SO-DIMM (2×16GB) — MAXED",
     storage:"512GB NVMe M.2 (único slot) + NIC PCIe ocupa slot 2.5\"", net:"NIC PCIe 4-puertos Intel I350-T4", gpu:"Intel UHD 630", os:"Proxmox VE",
-    roleDetail:"Router/Firewall pfSense VM · Gateway principal del lab",
+    roleDetail:"Router/Firewall pfSense VM · AdGuard Home LXC · Gateway principal del lab",
     limits:["Solo 1 slot NVMe M.2 2280 — sin expansión interna","NIC PCIe ocupa slot 2.5\" — sin bahía libre","Sin GPU dedicada para ML","i5-8500T sin HT — 6 cores reales"],
-    upgrades:[], workloads:["pfSense/OPNsense VM","Proxmox hypervisor","AdGuard DNS/DHCP","WireGuard VPN"] },
+    upgrades:[], workloads:["pfSense/OPNsense VM","AdGuard Home LXC (DNS/blocker)","Proxmox hypervisor","WireGuard VPN"] },
   { id:"t440p",  name:"Lenovo T440p",           role:"K3s Master Node / CI-CD",         badge:"K3s MASTER",pal:"blue",
     cpu:"Intel Core i7-4712MQ (4C/8T, 2.3–3.3GHz, 4th Gen)", ram:"16GB DDR3L SO-DIMM (2×8GB) — MAXED",
     storage:"512GB SSD NGFF (WAN) + 1TB HDD (SATA) + 1TB HDD (Ultrabay) + M.2 2242 SATA vacío", net:"Intel Gigabit", gpu:"GTX 730M (sin uso)", os:"Fedora Server 42",
@@ -155,7 +155,7 @@ export default function App() {
   const P = palette(dark);
   const [tab, setTab] = useState("worker2");
   const [sel, setSel] = useState(null);
-  const tabs=[{id:"worker2",l:"⭐ Worker 2"},{id:"hw",l:"Hardware"},{id:"up",l:"Upgrades"},{id:"net",l:"Red"},{id:"k3s",l:"Cluster K3s"},{id:"git",l:"GitOps"},{id:"iam",l:"IAM"},{id:"stor",l:"Storage"}];
+  const tabs=[{id:"worker2",l:"⭐ Worker 2"},{id:"hw",l:"Hardware"},{id:"up",l:"Upgrades"},{id:"net",l:"Red"},{id:"adguard",l:"🛡 AdGuard Home"},{id:"k3s",l:"Cluster K3s"},{id:"git",l:"GitOps"},{id:"iam",l:"IAM"},{id:"stor",l:"Storage"}];
   return (
     <div style={{fontFamily:"var(--font-sans)",background:P.bg,minHeight:"100vh"}}>
       <div style={{background:P.bg2,borderBottom:`0.5px solid ${P.bdr}`,padding:"20px 24px 0"}}>
@@ -176,6 +176,7 @@ export default function App() {
         {tab==="hw"&&<Hardware P={P} sel={sel} setSel={setSel}/>}
         {tab==="up"&&<Upgrades P={P}/>}
         {tab==="net"&&<Network P={P}/>}
+        {tab==="adguard"&&<AdGuard P={P}/>}
         {tab==="k3s"&&<K3s P={P}/>}
         {tab==="git"&&<GitOps P={P}/>}
         {tab==="iam"&&<IAM P={P}/>}
@@ -387,35 +388,49 @@ function Network({P}) {
   ];
   return (
     <div>
-      <p style={{fontSize:14,color:P.txts,margin:"0 0 20px"}}>Red segregada por VLANs. M720q con pfSense como gateway y firewall inter-VLAN.</p>
-      <svg width="100%" viewBox="0 0 660 500" role="img">
+      <p style={{fontSize:14,color:P.txts,margin:"0 0 20px"}}>Red segregada por VLANs. M720q con pfSense como gateway y AdGuard Home LXC como DNS resolver para todas las VLANs.</p>
+      <svg width="100%" viewBox="0 0 660 560" role="img">
         <title>Arquitectura de red del HomeLab</title>
         <Arr id={aid} col={P.line}/>
+        {/* Internet */}
         <Nd x={250} y={14} w={160} h={38} p={P.gray} t="Internet / ISP"/>
-        <Nd x={140} y={76} w={380} h={52} rx={10} p={P.teal} t="M720q — pfSense / OPNsense" s="Firewall · NAT · VLAN routing · WireGuard"/>
+        {/* pfSense VM */}
+        <Nd x={120} y={76} w={420} h={52} rx={10} p={P.teal} t="M720q Proxmox — pfSense VM" s="Firewall · NAT · VLAN routing · WireGuard · DNS → AdGuard LXC"/>
         <Ln x1={330} y1={52} x2={330} y2={76} col={P.line} arr={aid}/>
-        <Nd x={185} y={152} w={290} h={34} p={P.gray} t="Switch Managed 802.1Q (upgrade requerido)"/>
-        <Ln x1={330} y1={128} x2={330} y2={152} col={P.line} arr={aid}/>
+        {/* AdGuard LXC — destacado como componente propio */}
+        <Nd x={186} y={150} w={180} h={48} rx={8} p={P.green} t="AdGuard Home LXC" s="DNS blocker · DoH upstream"/>
+        <Nd x={374} y={150} w={160} h={48} rx={8} p={P.gray}  t="Switch Managed" s="802.1Q (upgrade)"/>
+        <Ln x1={330} y1={128} x2={276} y2={150} col={P.line} arr={aid}/>
+        <Ln x1={330} y1={128} x2={454} y2={150} col={P.line} arr={aid}/>
+        {/* DNS flow from AdGuard */}
+        <line x1={276} y1={198} x2={276} y2={218} stroke={P.green[1]} strokeWidth="1" strokeDasharray="3 3" markerEnd={AH}/>
+        <text x={240} y={212} textAnchor="middle" fontSize="9" fill={P.green[1]}>DNS queries</text>
+        {/* VLANs */}
         {vlans.map(v=>(
           <g key={v.l}>
-            <Nd x={v.x} y={220} w={120} h={48} p={P[v.pal]} t={v.l} s={v.s}/>
-            <Ln x1={v.x+60} y1={186} x2={v.x+60} y2={220} col={P.line} arr={aid}/>
+            <Nd x={v.x} y={230} w={120} h={48} p={P[v.pal]} t={v.l} s={v.s}/>
+            <Ln x1={v.x+60} y1={198} x2={v.x+60} y2={230} col={P.line} arr={aid}/>
           </g>
         ))}
         {hosts.map(v=>(
           <g key={v.l}>
-            <Nd x={v.cx-60} y={302} w={120} h={30} rx={6} p={P[v.pal]} t={v.l}/>
-            <Ln x1={v.cx} y1={268} x2={v.cx} y2={302} col={P.line} arr={aid}/>
+            <Nd x={v.cx-60} y={312} w={120} h={30} rx={6} p={P[v.pal]} t={v.l}/>
+            <Ln x1={v.cx} y1={278} x2={v.cx} y2={312} col={P.line} arr={aid}/>
           </g>
         ))}
-        <text x={330} y={360} textAnchor="middle" fontSize="11" fill={P.txts}>Servicios del gateway (M720q)</text>
-        {[["AdGuard DNS",66],["DHCP/VLAN",194],["WireGuard",322],["HAProxy",450],["Firewall",578]].map(([l,x])=>(
-          <Nd key={l} x={x-58} y={372} w={118} h={26} rx={4} p={P.teal} t={l}/>
+        {/* DoH upstream */}
+        <text x={330} y={370} textAnchor="middle" fontSize="10" fill={P.txts}>AdGuard Home — upstream DNS cifrado</text>
+        {[["DoH Cloudflare",100],["DoT Quad9",240],["DNSSEC",370],["Blocklists",500],["Split-horizon",620]].map(([l,x])=>(
+          <Nd key={l} x={x-70} y={382} w={142} h={26} rx={4} p={P.green} t={l}/>
         ))}
-        <Nd x={220} y={420} w={220} h={36} p={P.gray} t="Acceso remoto WireGuard"/>
-        <Ln x1={330} y1={398} x2={330} y2={420} col={P.line} arr={aid}/>
-        <text x={330} y={472} textAnchor="middle" fontSize="11" fill={P.txts}>P53 daily driver · clientes externos</text>
-        <line x1={330} y1={456} x2={330} y2={469} stroke={P.line} strokeWidth="0.8"/>
+        {/* WireGuard remote */}
+        <Nd x={220} y={430} w={220} h={36} p={P.gray} t="Acceso remoto WireGuard"/>
+        <Ln x1={330} y1={408} x2={330} y2={430} col={P.line} arr={aid}/>
+        <text x={330} y={485} textAnchor="middle" fontSize="11" fill={P.txts}>P53 daily driver · clientes externos</text>
+        <line x1={330} y1={466} x2={330} y2={482} stroke={P.line} strokeWidth="0.8"/>
+        {/* DNS resolution label */}
+        <text x={60} y={370} textAnchor="middle" fontSize="9" fill={P.green[1]}>192.168.10.2</text>
+        <text x={60} y={380} textAnchor="middle" fontSize="9" fill={P.green[1]}>(IP fija LXC)</text>
       </svg>
       <div style={{marginTop:16,display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(200px,1fr))",gap:10}}>
         {[
@@ -435,6 +450,263 @@ function Network({P}) {
           );
         })}
       </div>
+    </div>
+  );
+}
+
+// ── AdGuard Home ────────────────────────────────────────────────────────────────
+function AdGuard({P}) {
+  const [activeSection, setActiveSection] = useState("arch");
+  const sections = [{id:"arch",l:"Arquitectura LXC"},{id:"config",l:"Configuración"},{id:"integ",l:"Integraciones"},{id:"monitoring",l:"Monitoring"}];
+
+  return (
+    <div>
+      {/* Header */}
+      <div style={{padding:"16px 20px",background:P.green[0],border:`0.5px solid ${P.green[1]}`,borderRadius:12,marginBottom:24}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
+          <div>
+            <div style={{fontSize:15,fontWeight:500,color:P.green[2],marginBottom:4}}>🛡 AdGuard Home</div>
+            <div style={{fontSize:13,color:P.green[2]}}>DNS resolver · Ad/malware blocker · DoH/DoT upstream · Split-horizon DNS · Open source (GPL-3.0)</div>
+          </div>
+          <div style={{textAlign:"right"}}>
+            <div style={{fontSize:11,fontWeight:500,padding:"3px 8px",borderRadius:4,background:P.bg,color:P.green[1],marginBottom:4}}>LXC Container</div>
+            <div style={{fontSize:11,color:P.green[2]}}>M720q · Proxmox</div>
+          </div>
+        </div>
+      </div>
+
+      {/* Sub-tabs */}
+      <div style={{display:"flex",gap:4,marginBottom:20,borderBottom:`0.5px solid ${P.bdr}`,paddingBottom:0}}>
+        {sections.map(s=>(
+          <button key={s.id} onClick={()=>setActiveSection(s.id)} style={{padding:"7px 14px",fontSize:13,border:"none",cursor:"pointer",borderRadius:"6px 6px 0 0",background:activeSection===s.id?P.bg:"transparent",color:activeSection===s.id?P.txt:P.txts,fontWeight:activeSection===s.id?500:400,borderBottom:activeSection===s.id?`2px solid ${P.green[1]}`:"2px solid transparent"}}>{s.l}</button>
+        ))}
+      </div>
+
+      {activeSection==="arch" && (
+        <div>
+          <p style={{fontSize:14,color:P.txts,margin:"0 0 20px"}}>Contenedor LXC en Proxmox sobre el M720q. IP fija en VLAN 10 (MGMT), sirviendo DNS a todas las VLANs vía pfSense.</p>
+          <svg width="100%" viewBox="0 0 660 420" role="img">
+            <title>Arquitectura AdGuard Home LXC en Proxmox</title>
+            <defs><marker id="aAG" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke={P.line} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></marker></defs>
+            {/* Proxmox host */}
+            <rect x={10} y={10} width={640} height={260} rx={12} fill={P.bg2} stroke={P.bdr} strokeWidth="1" strokeDasharray="6 3"/>
+            <text x={30} y={32} fontSize="11" fontWeight="500" fill={P.txts}>Proxmox VE — M720q (i5-8500T · 32GB RAM · 512GB NVMe)</text>
+
+            {/* pfSense VM */}
+            <rect x={30} y={44} width={280} height={100} rx={8} fill={P.teal[0]} stroke={P.teal[1]} strokeWidth="0.5"/>
+            <text x={170} y={68} textAnchor="middle" dominantBaseline="central" fontSize="12" fontWeight="500" fill={P.teal[2]}>pfSense VM</text>
+            <text x={170} y={84} textAnchor="middle" dominantBaseline="central" fontSize="10" fill={P.teal[2]}>2 vCPU · 4GB RAM · 20GB disk</text>
+            <text x={170} y={100} textAnchor="middle" dominantBaseline="central" fontSize="10" fill={P.teal[2]}>WAN: eth0 (ISP) · LAN: VLAN trunk</text>
+            <text x={170} y={116} textAnchor="middle" dominantBaseline="central" fontSize="10" fill={P.teal[2]}>DNS forwarder → 192.168.10.2</text>
+            <text x={170} y={132} textAnchor="middle" dominantBaseline="central" fontSize="10" fill={P.teal[2]}>DHCP option 6 → 192.168.10.2</text>
+
+            {/* AdGuard LXC */}
+            <rect x={350} y={44} width={280} height={100} rx={8} fill={P.green[0]} stroke={P.green[1]} strokeWidth="1"/>
+            <text x={490} y={68} textAnchor="middle" dominantBaseline="central" fontSize="12" fontWeight="500" fill={P.green[2]}>AdGuard Home LXC</text>
+            <text x={490} y={84} textAnchor="middle" dominantBaseline="central" fontSize="10" fill={P.green[2]}>1 vCPU · 512MB RAM · 8GB disk</text>
+            <text x={490} y={100} textAnchor="middle" dominantBaseline="central" fontSize="10" fill={P.green[2]}>IP fija: 192.168.10.2 (VLAN 10)</text>
+            <text x={490} y={116} textAnchor="middle" dominantBaseline="central" fontSize="10" fill={P.green[2]}>Puerto 53 (DNS) · 3000 (UI)</text>
+            <text x={490} y={132} textAnchor="middle" dominantBaseline="central" fontSize="10" fill={P.green[2]}>Unprivileged · nesting=1</text>
+
+            {/* Arrow pfSense → AdGuard */}
+            <line x1={310} y1={94} x2={350} y2={94} stroke={P.green[1]} strokeWidth="1.5" markerEnd="url(#aAG)"/>
+            <text x={330} y={86} textAnchor="middle" fontSize="9" fill={P.green[1]}>DNS fwd</text>
+
+            {/* Other VMs row */}
+            {[["WireGuard VM","1vCPU 512MB",30],["Monitoring VM","1vCPU 1GB",185],["Future VMs","...","",340]].map(([t,s,x],i)=>(
+              <g key={t}>
+                <rect x={30+i*210} y={174} width={180} height={46} rx={6} fill={P.gray[0]} stroke={P.gray[1]} strokeWidth="0.5"/>
+                <text x={120+i*210} y={193} textAnchor="middle" dominantBaseline="central" fontSize="11" fontWeight="500" fill={P.gray[2]}>{t}</text>
+                <text x={120+i*210} y={209} textAnchor="middle" dominantBaseline="central" fontSize="10" fill={P.gray[2]}>{s}</text>
+              </g>
+            ))}
+
+            {/* Proxmox label */}
+            <text x={640} y={260} textAnchor="end" fontSize="10" fill={P.txts}>Proxmox VE</text>
+          </svg>
+
+          {/* LXC creation commands */}
+          <div style={{marginTop:20,padding:"14px 18px",background:P.bg2,border:`0.5px solid ${P.bdr}`,borderRadius:8}}>
+            <div style={{fontSize:13,fontWeight:500,color:P.txt,marginBottom:10}}>Creación del contenedor LXC en Proxmox</div>
+            <pre style={{fontFamily:"var(--font-mono)",fontSize:12,color:P.txts,lineHeight:2,margin:0,whiteSpace:"pre-wrap"}}>
+              <span style={{color:P.txts}}>{`# Desde la shell de Proxmox (pve shell)\n`}</span>
+              <span style={{color:P.green[2]||P.txt}}>{`pct create 100 local:vztmpl/debian-12-standard_12.2-1_amd64.tar.zst \\\n`}</span>
+              <span style={{color:P.green[2]||P.txt}}>{`  --hostname adguard-home \\\n`}</span>
+              <span style={{color:P.green[2]||P.txt}}>{`  --cores 1 --memory 512 --swap 256 \\\n`}</span>
+              <span style={{color:P.green[2]||P.txt}}>{`  --rootfs local-lvm:8 \\\n`}</span>
+              <span style={{color:P.green[2]||P.txt}}>{`  --net0 name=eth0,bridge=vmbr0,tag=10,ip=192.168.10.2/24,gw=192.168.10.1 \\\n`}</span>
+              <span style={{color:P.green[2]||P.txt}}>{`  --unprivileged 1 --features nesting=1 \\\n`}</span>
+              <span style={{color:P.green[2]||P.txt}}>{`  --start 1 --onboot 1\n\n`}</span>
+              <span style={{color:P.txts}}>{`# Dentro del LXC — instalar AdGuard Home\n`}</span>
+              <span style={{color:P.txt}}>{`curl -s -S -L https://raw.githubusercontent.com/AdguardTeam/AdGuardHome/master/scripts/install.sh | sh -s -- -v`}</span>
+            </pre>
+          </div>
+        </div>
+      )}
+
+      {activeSection==="config" && (
+        <div>
+          <p style={{fontSize:14,color:P.txts,margin:"0 0 20px"}}>Configuración enterprise con DoH upstream, blocklists curadas y split-horizon DNS para el lab.</p>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
+            {/* Upstream DNS */}
+            <div style={{padding:16,background:P.bg2,borderRadius:8}}>
+              <div style={{fontSize:13,fontWeight:500,color:P.txt,marginBottom:12}}>Upstream DNS (DoH/DoT)</div>
+              {[
+                {provider:"Cloudflare", url:"https://cloudflare-dns.com/dns-query", note:"DoH · DNSSEC · privacy-first"},
+                {provider:"Quad9",      url:"https://dns.quad9.net/dns-query",      note:"DoH · malware blocking"},
+                {provider:"NextDNS",    url:"https://dns.nextdns.io",               note:"DoH · configurable · fallback"},
+              ].map(d=>(
+                <div key={d.provider} style={{marginBottom:10,padding:"8px 10px",background:P.bg,borderRadius:6,border:`0.5px solid ${P.bdr}`}}>
+                  <div style={{fontSize:12,fontWeight:500,color:P.txt,marginBottom:2}}>{d.provider}</div>
+                  <div style={{fontSize:11,fontFamily:"var(--font-mono)",color:P.green[1],marginBottom:2}}>{d.url}</div>
+                  <div style={{fontSize:11,color:P.txts}}>{d.note}</div>
+                </div>
+              ))}
+            </div>
+            {/* Blocklists */}
+            <div style={{padding:16,background:P.bg2,borderRadius:8}}>
+              <div style={{fontSize:13,fontWeight:500,color:P.txt,marginBottom:12}}>Blocklists recomendadas</div>
+              {[
+                {name:"AdGuard DNS filter",       url:"filters/15.txt",         domains:"~800K"},
+                {name:"OISD Big",                 url:"oisd.nl/full",            domains:"~4M"},
+                {name:"Steven Black Unified",     url:"steven-black/hosts",      domains:"~200K"},
+                {name:"URLhaus Malware",          url:"urlhaus-filter/hosts",    domains:"~100K"},
+                {name:"Hagezi Pro",               url:"hagezi/dns-blocklists",   domains:"~500K"},
+              ].map(b=>(
+                <div key={b.name} style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8,fontSize:12}}>
+                  <span style={{color:P.txt}}>{b.name}</span>
+                  <span style={{padding:"2px 6px",borderRadius:3,background:P.green[0],color:P.green[2],fontSize:11}}>{b.domains}</span>
+                </div>
+              ))}
+            </div>
+            {/* Split-horizon DNS */}
+            <div style={{padding:16,background:P.bg2,borderRadius:8}}>
+              <div style={{fontSize:13,fontWeight:500,color:P.txt,marginBottom:12}}>Split-horizon DNS</div>
+              <div style={{fontSize:12,color:P.txts,marginBottom:10}}>Zonas internas resueltas localmente, sin salir a internet:</div>
+              {[
+                {zone:"*.lab.internal",       res:"192.168.20.x (K3s MetalLB)"},
+                {zone:"*.cluster.local",      res:"CoreDNS del cluster K3s"},
+                {zone:"proxmox.mgmt",         res:"192.168.10.1"},
+                {zone:"adguard.mgmt",         res:"192.168.10.2"},
+                {zone:"pfsense.mgmt",         res:"192.168.10.254"},
+              ].map(z=>(
+                <div key={z.zone} style={{display:"flex",gap:8,marginBottom:7,alignItems:"baseline"}}>
+                  <span style={{fontSize:11,fontFamily:"var(--font-mono)",color:P.blue[2]||P.txt,minWidth:160,flexShrink:0}}>{z.zone}</span>
+                  <span style={{fontSize:11,color:P.txts}}>→ {z.res}</span>
+                </div>
+              ))}
+            </div>
+            {/* pfSense integration */}
+            <div style={{padding:16,background:P.bg2,borderRadius:8}}>
+              <div style={{fontSize:13,fontWeight:500,color:P.txt,marginBottom:12}}>Integración pfSense</div>
+              {[
+                {setting:"DNS Resolver (Unbound)",    action:"Deshabilitar — AdGuard toma ese rol"},
+                {setting:"DNS Forwarder",             action:"Habilitar → forward a 192.168.10.2"},
+                {setting:"DHCP Server (todas VLANs)", action:"DNS option = 192.168.10.2"},
+                {setting:"Firewall rule",             action:"Bloquear DNS (53/853) excepto desde LXC"},
+                {setting:"DoT pfSense propio",        action:"Opcional — usar AdGuard como único resolver"},
+              ].map(s=>(
+                <div key={s.setting} style={{marginBottom:8}}>
+                  <div style={{fontSize:12,fontWeight:500,color:P.txt}}>{s.setting}</div>
+                  <div style={{fontSize:11,color:P.txts}}>{s.action}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {activeSection==="integ" && (
+        <div>
+          <p style={{fontSize:14,color:P.txts,margin:"0 0 20px"}}>Integración de AdGuard Home con el resto del stack enterprise del lab.</p>
+          <svg width="100%" viewBox="0 0 660 360" role="img">
+            <title>Integraciones de AdGuard Home</title>
+            <defs><marker id="aAGI" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke={P.line} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></marker></defs>
+            {/* AdGuard center */}
+            <rect x={240} y={130} width={180} height={60} rx={10} fill={P.green[0]} stroke={P.green[1]} strokeWidth="1.5"/>
+            <text x={330} y={154} textAnchor="middle" dominantBaseline="central" fontSize="13" fontWeight="500" fill={P.green[2]}>AdGuard Home</text>
+            <text x={330} y={172} textAnchor="middle" dominantBaseline="central" fontSize="10" fill={P.green[2]}>192.168.10.2 · LXC</text>
+            {/* Satellites */}
+            {[
+              {t:"pfSense",         s:"DNS forwarder",         x:30,  y:130, col:P.teal,   lx1:240,ly1:160,lx2:170,ly2:160},
+              {t:"Todas las VLANs", s:"DHCP opt 6",            x:30,  y:230, col:P.blue,   lx1:240,ly1:175,lx2:170,ly2:255},
+              {t:"Prometheus",      s:"scrape :9617",          x:490, y:50,  col:P.amber,  lx1:420,ly1:145,lx2:490,ly2:76},
+              {t:"Grafana",         s:"dashboard DNS",         x:490, y:130, col:P.amber,  lx1:420,ly1:160,lx2:490,ly2:160},
+              {t:"Traefik Ingress", s:"reverse proxy UI",      x:490, y:210, col:P.purple, lx1:420,ly1:170,lx2:490,ly2:230},
+              {t:"CoreDNS K3s",     s:"forward lab.internal",  x:240, y:20,  col:P.blue,   lx1:330,ly1:130,lx2:330,ly2:66},
+              {t:"Keycloak",        s:"auth UI (futuro)",      x:490, y:290, col:P.red,    lx1:420,ly1:178,lx2:490,ly2:310},
+            ].map(n=>(
+              <g key={n.t}>
+                <rect x={n.x} y={n.y} width={150} height={44} rx={6} fill={n.col[0]} stroke={n.col[1]} strokeWidth="0.5"/>
+                <text x={n.x+75} y={n.y+17} textAnchor="middle" dominantBaseline="central" fontSize="11" fontWeight="500" fill={n.col[2]}>{n.t}</text>
+                <text x={n.x+75} y={n.y+32} textAnchor="middle" dominantBaseline="central" fontSize="10" fill={n.col[2]}>{n.s}</text>
+                <line x1={n.lx1} y1={n.ly1} x2={n.lx2} y2={n.ly2} stroke={P.line} strokeWidth="1" strokeDasharray="4 3" markerEnd="url(#aAGI)"/>
+              </g>
+            ))}
+          </svg>
+          <div style={{marginTop:16,padding:16,background:P.bg2,borderRadius:8}}>
+            <div style={{fontSize:13,fontWeight:500,color:P.txt,marginBottom:10}}>DNS-over-HTTPS para clientes</div>
+            <div style={{fontSize:13,color:P.txts,marginBottom:12}}>Con Traefik como reverse proxy, AdGuard expone DoH accesible dentro del lab sin exponer el puerto 853 directamente:</div>
+            <pre style={{fontFamily:"var(--font-mono)",fontSize:12,color:P.txt,lineHeight:1.8,margin:0,background:P.bg,padding:12,borderRadius:6}}>
+              {`# En Traefik (K3s) — IngressRoute para AdGuard DoH\n`}
+              {`apiVersion: traefik.io/v1alpha1\nkind: IngressRoute\nmetadata:\n  name: adguard-doh\nspec:\n  entryPoints: [websecure]\n  routes:\n  - match: Host(\`dns.lab.internal\`)\n    kind: Rule\n    services:\n    - name: adguard-home\n      port: 3000`}
+            </pre>
+          </div>
+        </div>
+      )}
+
+      {activeSection==="monitoring" && (
+        <div>
+          <p style={{fontSize:14,color:P.txts,margin:"0 0 20px"}}>AdGuard Home expone métricas compatibles con Prometheus via exporter. Dashboard Grafana incluido.</p>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:16}}>
+            <div style={{padding:16,background:P.bg2,borderRadius:8}}>
+              <div style={{fontSize:13,fontWeight:500,color:P.txt,marginBottom:12}}>Métricas disponibles</div>
+              {[
+                ["dns_queries_total",        "Total de queries procesadas"],
+                ["dns_blocked_total",        "Queries bloqueadas (ads/malware)"],
+                ["dns_query_duration",       "Latencia de resolución DNS"],
+                ["dns_blocked_by_list",      "Bloqueos por blocklist"],
+                ["dns_upstream_latency",     "Latencia upstream DoH/DoT"],
+                ["adguard_clients_active",   "Clientes DNS activos"],
+              ].map(([m,d])=>(
+                <div key={m} style={{marginBottom:8}}>
+                  <div style={{fontSize:11,fontFamily:"var(--font-mono)",color:P.green[1]}}>{m}</div>
+                  <div style={{fontSize:11,color:P.txts}}>{d}</div>
+                </div>
+              ))}
+            </div>
+            <div style={{padding:16,background:P.bg2,borderRadius:8}}>
+              <div style={{fontSize:13,fontWeight:500,color:P.txt,marginBottom:12}}>Stack de monitoring</div>
+              <div style={{fontSize:13,color:P.txts,marginBottom:12}}>El exporter corre como segundo contenedor o proceso dentro del LXC:</div>
+              <pre style={{fontFamily:"var(--font-mono)",fontSize:11,color:P.txt,lineHeight:1.8,background:P.bg,padding:12,borderRadius:6,margin:0}}>
+                {`# adguard-exporter (dentro del LXC)\ndocker run -d \\\n  -p 9617:9617 \\\n  -e ADGUARD_HOSTNAME=localhost \\\n  -e ADGUARD_PORT=3000 \\\n  -e ADGUARD_USERNAME=admin \\\n  -e ADGUARD_PASSWORD=\${SECRET} \\\n  ebrianne/adguard-exporter\n\n# prometheus.yml scrape config\n- job_name: adguard\n  static_configs:\n  - targets: ['192.168.10.2:9617']`}
+              </pre>
+            </div>
+          </div>
+          <div style={{padding:16,background:P.bg2,borderRadius:8}}>
+            <div style={{fontSize:13,fontWeight:500,color:P.txt,marginBottom:8}}>Alertas recomendadas (Alertmanager)</div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+              {[
+                {alert:"AdGuardDown",          cond:"up{job='adguard'} == 0",              sev:"critical"},
+                {alert:"HighBlockRate",        cond:"dns_blocked % dns_total > 50",         sev:"warning"},
+                {alert:"DNSLatencyHigh",       cond:"dns_query_duration_p99 > 500ms",       sev:"warning"},
+                {alert:"UpstreamDNSFailed",    cond:"dns_upstream_failures > 10",           sev:"critical"},
+              ].map(a=>{
+                const sc=a.sev==="critical"?P.red:P.amber;
+                return (
+                  <div key={a.alert} style={{padding:10,background:P.bg,borderRadius:6,border:`0.5px solid ${sc[1]}`}}>
+                    <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
+                      <span style={{fontSize:12,fontWeight:500,color:P.txt}}>{a.alert}</span>
+                      <span style={{fontSize:11,padding:"1px 6px",borderRadius:3,background:sc[0],color:sc[2]}}>{a.sev}</span>
+                    </div>
+                    <div style={{fontSize:11,fontFamily:"var(--font-mono)",color:P.txts}}>{a.cond}</div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

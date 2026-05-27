@@ -206,7 +206,8 @@ controller:
   admin:
     createSecret: true
     username: admin
-    password: admin123
+    # password: generated automatically by Helm chart
+    # store in Vault: vault kv put secret/jenkins/admin username=admin password=$(kubectl get secret -n ci-cd jenkins-admin -o jsonpath='{.data.jenkins-admin-password}' | base64 -d)
 
   serviceType: NodePort
   nodePort: 32000

@@ -37,14 +37,14 @@ Después del despliegue:
 kubectl logs -n ci-cd job/jenkins-configure-pipeline
 
 # Verificar pipeline en Jenkins
-curl -u admin:admin123 http://192.168.1.91:32000/job/homepage-pipeline/api/json
+curl -u admin:$(kubectl get secret -n ci-cd jenkins-admin -o jsonpath='{.data.jenkins-admin-password}' | base64 -d) http://192.168.1.91:32000/job/homepage-pipeline/api/json
 ```
 
 ## Acceso
 
 - URL: http://192.168.1.91:32000
 - Usuario: admin
-- Password: admin123
+- Password: See Kubernetes secret `jenkins-admin` in `ci-cd` namespace (managed by External Secrets + Vault)
 - Pipeline: http://192.168.1.91:32000/job/homepage-pipeline/
 
 ## SSH Keys

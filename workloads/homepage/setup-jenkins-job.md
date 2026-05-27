@@ -3,7 +3,7 @@
 ## Access Jenkins
 URL: http://192.168.1.91:32000
 Username: admin
-Password: admin123
+Password: See `.vault-root-token` or Vault secret (not stored in git)
 
 ## Required Plugins
 1. Go to **Manage Jenkins** → **Plugins** → **Available**
@@ -18,7 +18,7 @@ Password: admin123
 - Go to **Manage Jenkins** → **Credentials** → **System** → **Global credentials**
 - Click **Add Credentials**
 - Kind: **Secret text**
-- Secret: `eyJhbGciOiJSUzI1NiIsImtpZCI6Imk4ZVdnLVFic0F6VUl1X3A3X3liUHRSc0ZVYnMwd1ZMTWZLaEFSelc2OUUifQ.eyJhdWQiOlsiaHR0cHM6Ly9rdWJlcm5ldGVzLmRlZmF1bHQuc3ZjLmNsdXN0ZXIubG9jYWwiXSwiZXhwIjo0OTE3NTU2NTUwLCJpYXQiOjE3NjM5NTY1NTAsImlzcyI6Imh0dHBzOi8va3ViZXJuZXRlcy5kZWZhdWx0LnN2Yy5jbHVzdGVyLmxvY2FsIiwianRpIjoiNzM4MDg3ZTktZTUyMC00NzcyLTgzZjQtNDgyMDEzMWMzMDdkIiwia3ViZXJuZXRlcy5pbyI6eyJuYW1lc3BhY2UiOiJjaS1jZCIsInNlcnZpY2VhY2NvdW50Ijp7Im5hbWUiOiJqZW5raW5zIiwidWlkIjoiMGM4YWM3ODMtMWQxNy00NzkxLTkwYTYtOWI0NjM1OTZmZTEzIn19LCJuYmYiOjE3NjM5NTY1NTAsInN1YiI6InN5c3RlbTpzZXJ2aWNlYWNjb3VudDpjaS1jZDpqZW5raW5zIn0.ChAB7JwoZs6m_8U9gaa5FM2bSRCwlwFu-A1gMa1T1pTiWT_um3wwE1iu4Oc4Zf2aToLoB3gOfPhcRYmERj8B-I5Zre5OVW8sqGzi0DA3W32_pheI_44Ml8z265DVPp7erZyR8cQNx_mS0q6im-tKmCJJqgxzFoWenCdJIiV-5g11Zt1j3o5JyA6TBidZ9mv_m_KUOjfJ7GC5FTyURCUA5S3Mqq54s0vjQ_J5_EvoYWdXOJYgalWP4QQzUnraE5JnlTzxOt2prZKafpVJey7zxqNeo1gYPgr7gLjTkJ2RvEa6a_jhjOWH3NThizLzPIHun5KEjU-GceKAWufP0etwng`
+- Secret: `<Generate with: kubectl create token jenkins -n ci-cd>`  # ⚠️ Never commit actual tokens
 - ID: `k8s-token`
 - Description: `Kubernetes ServiceAccount Token`
 

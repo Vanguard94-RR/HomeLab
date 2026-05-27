@@ -8,4 +8,4 @@ jenkins:
       allowsSignup: false
       users:
         - id: "admin"
-          password: "admin123"
+          password: "${JENKINS_ADMIN_PASSWORD}"  # Override with environment variable or Vault secret
