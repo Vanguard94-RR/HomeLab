@@ -6,7 +6,8 @@
 # ==========================================
 # Local agent artifacts
 # ==========================================
-docs/superpowers/
+docs/superpowers/*
+docs/old/*
 .superpowers/*
 # ==========================================
 # Rendered manifests
