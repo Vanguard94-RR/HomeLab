@@ -398,31 +398,86 @@ sudo firewall-cmd --reload
 
 ## 7. K3s Component Overview
 
-K3s bundles several components into a single binary:
+### 7.1 Components bundled in K3s (kept)
 
-| Component | Version (K3s stable) | Purpose |
+| Component | Purpose |
+|---|---|
+| Kubernetes API server | Cluster control plane |
+| containerd 2.0 | Container runtime |
+| CoreDNS | In-cluster DNS resolution |
+| kube-proxy | Service traffic routing |
+| Metrics Server | Resource metrics (kubectl top) |
+
+### 7.2 Components disabled at install (replaced by enterprise alternatives)
+
+| Disabled | Replaced by | Reason |
 |---|---|---|
-| Kubernetes API server | 1.31+ | Cluster control plane |
-| etcd (embedded) | — | Cluster state storage (single-server mode uses SQLite) |
-| containerd | 2.0+ | Container runtime |
-| Flannel | — | Pod networking (VXLAN mode) |
-| CoreDNS | — | In-cluster DNS resolution |
-| Traefik | v2/v3 | Ingress controller (deployed by default) |
-| Klipper ServiceLB | — | Simple L4 load balancer (deployed by default) |
-| kube-proxy | — | Service traffic routing |
-| Metrics Server | — | Resource metrics (kubectl top) |
+| Flannel CNI | **Cilium** | eBPF networking, NetworkPolicy, L7 visibility |
+| Klipper ServiceLB | **Cilium L2** | Cilium replaces MetalLB natively |
+| Traefik (default) | **Traefik v3 + Nginx** | Separate internal/external ingress |
+| K3s NetworkPolicy | **Cilium** | More powerful policy engine |
 
-### Components NOT installed by default
+> K3s is installed with `--flannel-backend=none --disable-network-policy --disable=traefik` so nodes start without CNI. Cilium must be installed immediately after, before any pods can schedule.
 
-These will be added in later phases:
+### 7.3 Enterprise Stack — Full Component List
 
-| Component | Purpose | Phase |
+| Category | Component | Purpose |
 |---|---|---|
-| Longhorn | Distributed block storage | After 3rd node |
-| MetalLB | L2 load balancer | After cluster stable |
-| ArgoCD | GitOps deployments | DevOps phase |
-| Prometheus + Grafana | Monitoring | Observability phase |
-| Cert-manager | TLS certificates | Before exposing services |
+| **Orchestration** | K3s | Lightweight Kubernetes distribution |
+| | Helm v3 | Package manager |
+| **CNI & Networking** | Cilium | eBPF CNI · NetworkPolicy L3/L4/L7 · WireGuard mTLS |
+| | Hubble | Network flow observability · L7 visibility |
+| | Cilium L2 LB | Replaces MetalLB — L2 announcement |
+| **Service Mesh** | Istio | mTLS · traffic management · canary releases |
+| | Kiali | Service mesh topology · traffic visualization |
+| **Ingress** | Traefik v3 | Internal services · lab admin UIs |
+| | Nginx Ingress | External / production-exposed services |
+| **Storage** | Longhorn CSI | Distributed block storage · 2× replication |
+| **TLS** | cert-manager | Automatic TLS · ACME · Let's Encrypt |
+| **GitOps** | ArgoCD | Pull-based GitOps deployments |
+| | Tekton | CI pipelines · SAST · image builds |
+| **SCM & Registry** | Gitea | Self-hosted Git + webhooks |
+| | Harbor | OCI registry · vulnerability scanning |
+| **IAM** | Keycloak | OIDC IdP · SAML · multi-realm |
+| | HashiCorp Vault | Secrets management · PKI |
+| | External Secrets Op. | Vault → K8s Secrets sync |
+| **Observability** | Prometheus | Metrics scraping + storage |
+| | Grafana | Dashboards + alerting UI |
+| | Loki | Log aggregation · LogQL |
+| | Tempo | Distributed tracing · OTLP |
+| | Alertmanager | Alert routing · silencing |
+
+### 7.4 Why Cilium over Flannel
+
+| | Flannel | Cilium |
+|---|---|---|
+| Dataplane | iptables / VXLAN | eBPF (kernel bypass) |
+| NetworkPolicy | Requires extra plugin | Native L3/L4/L7 |
+| Load Balancing | Klipper (basic) | L2 announcement (replaces MetalLB) |
+| Observability | None | Hubble — per-flow visibility |
+| mTLS | None | WireGuard transparent encryption |
+| Performance | ~10% overhead | Near-native kernel performance |
+| Enterprise use | Dev/lab only | Production Kubernetes standard |
+
+### 7.5 Why Istio for Service Mesh
+
+Istio provides zero-trust networking between microservices:
+- **mTLS** — all pod-to-pod traffic encrypted by default
+- **Traffic Management** — canary releases, A/B testing, circuit breakers
+- **Observability** — L7 metrics, traces, access logs per service
+- **Kiali** — visual service topology and health dashboard
+
+> Istio + Cilium together give both infrastructure-level (Cilium eBPF) and application-level (Istio sidecar) security and observability.
+
+### 7.6 Why Dual Ingress
+
+| | Traefik v3 | Nginx Ingress |
+|---|---|---|
+| Purpose | Internal lab services, admin UIs | External / production services |
+| Config | Dynamic (file/CRD) | Standard Kubernetes Ingress |
+| Auth | Forward auth (Keycloak) | External auth via annotations |
+| Use cases | Proxmox UI, AdGuard, Grafana, ArgoCD | Public APIs, exposed apps |
+| TLS | cert-manager integration | cert-manager integration |
 
 ---
 
@@ -443,18 +498,21 @@ Step 7 — Verify workloads: kubectl get pods -A
 ### 8.2 Step 1 — Install K3s Server (t440p-server)
 
 ```bash
-# Install K3s server with SELinux support
+# Install K3s — disable Flannel and Traefik (Cilium replaces both)
 curl -sfL https://get.k3s.io | \
   INSTALL_K3S_EXEC="--selinux \
     --write-kubeconfig-mode 644 \
     --tls-san 10.10.20.100 \
-    --tls-san t440p-server" \
+    --tls-san t440p-server \
+    --flannel-backend=none \
+    --disable-network-policy \
+    --disable=traefik" \
   sh -
 
 # Verify service is running
 sudo systemctl status k3s
 
-# Check node is Ready
+# Node will be NotReady until Cilium is installed — this is expected
 sudo kubectl get nodes
 ```
 
@@ -466,6 +524,40 @@ sudo kubectl get nodes
 | `--write-kubeconfig-mode 644` | Allow non-root kubectl access |
 | `--tls-san 10.10.20.100` | Add node IP to TLS certificate SANs |
 | `--tls-san t440p-server` | Add hostname to TLS certificate SANs |
+| `--flannel-backend=none` | Disable Flannel CNI — Cilium will replace it |
+| `--disable-network-policy` | Disable K3s built-in NetworkPolicy — Cilium handles this |
+| `--disable=traefik` | Disable default Traefik — we install our own dual ingress |
+
+> ⚠️ After this step, nodes will show `NotReady`. This is expected — no CNI is installed yet. Proceed immediately to Step 2 (Cilium install).
+
+### 8.2b Step 1b — Install Cilium CNI
+
+Install Cilium immediately after K3s server, before joining workers:
+
+```bash
+# Install Helm if not present
+curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+
+# Add Cilium repo
+helm repo add cilium https://helm.cilium.io
+helm repo update
+
+# Install Cilium with L2 LB (replaces MetalLB) and Hubble
+helm install cilium cilium/cilium \
+  --namespace kube-system \
+  --set l2announcements.enabled=true \
+  --set hubble.relay.enabled=true \
+  --set hubble.ui.enabled=true \
+  --set kubeProxyReplacement=true \
+  --set k8sServiceHost=10.10.20.100 \
+  --set k8sServicePort=6443
+
+# Wait for Cilium to be ready
+sudo kubectl -n kube-system rollout status daemonset/cilium
+
+# Verify node is now Ready
+sudo kubectl get nodes
+```
 
 ### 8.3 Step 2 — Get Cluster Token
 
@@ -701,29 +793,41 @@ sudo ./homelab-k3s-prefix.sh --role worker --hostname t430
 sudo ./homelab-k3s-prefix.sh --role worker --dry-run
 ```
 
-### K3s Install Commands (summary)
+### K3s Install Commands (Enterprise Stack — Cilium)
 
 ```bash
-# Master (t440p-server)
+# Step 1 — Master (t440p-server) — disable Flannel + Traefik
 curl -sfL https://get.k3s.io | \
   INSTALL_K3S_EXEC="--selinux --write-kubeconfig-mode 644 \
-    --tls-san 10.10.20.100 --tls-san t440p-server" sh -
+    --tls-san 10.10.20.100 --tls-san t440p-server \
+    --flannel-backend=none --disable-network-policy \
+    --disable=traefik" sh -
 
-# Get token
+# Step 2 — Install Cilium CNI (node NotReady until this runs)
+helm repo add cilium https://helm.cilium.io && helm repo update
+helm install cilium cilium/cilium --namespace kube-system \
+  --set l2announcements.enabled=true \
+  --set hubble.relay.enabled=true \
+  --set hubble.ui.enabled=true \
+  --set kubeProxyReplacement=true \
+  --set k8sServiceHost=10.10.20.100 \
+  --set k8sServicePort=6443
+
+# Step 3 — Get token
 sudo cat /var/lib/rancher/k3s/server/node-token
 
-# Worker (t430)
+# Step 4 — Worker (t430)
 curl -sfL https://get.k3s.io | \
   K3S_URL="https://10.10.20.100:6443" \
   K3S_TOKEN="<TOKEN>" \
   INSTALL_K3S_EXEC="--selinux" sh -
 
-# Post-install firewall (both nodes)
+# Step 5 — Post-install firewall (both nodes)
 sudo firewall-cmd --permanent --zone=trusted --add-source=10.42.0.0/16
 sudo firewall-cmd --permanent --zone=trusted --add-source=10.43.0.0/16
 sudo firewall-cmd --reload
 
-# Verify cluster
+# Step 6 — Verify cluster
 sudo kubectl get nodes -o wide
 sudo kubectl get pods -A
 ```

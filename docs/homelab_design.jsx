@@ -138,19 +138,22 @@ const UPGRADES = [
   { n:3, title:"VLANs Persistence ✓ bridge-vlan-aware persistente", mach:["M720q · Proxmox"], pal:"teal",
     reason:"COMPLETADO — /etc/network/interfaces contiene bridge-vlan-aware yes y bridge-vids 2-4094 en vmbr1. VLANs sobreviven reboot. Verificado: tap199i0 VLAN 10, veth101i0 VLAN 10.", cost:"✓ hecho",
     items:["bridge-vlan-aware yes en vmbr1","bridge-vids 2-4094 — acepta cualquier VLAN sin cambios","VM 199 tag=10 ✓ · LXC 101 eth0 tag=10 ✓ · pfSense trunk sin tag ✓"] },
-  { n:4, title:"SSDs para nodos K3s (HDDs → SSDs)", mach:["T430","T440p Master"], pal:"red",
+  { n:4, title:"Nodos K3s conectados ✓ T440p + T430 en VLAN 20", mach:["T440p","T430"], pal:"teal",
+    reason:"COMPLETADO — T440p (t440p-server) en puerto 2 y T430 (t430) en puerto 3 del switch. Ambos en VLAN 20 PROD. Pre-check: 26 passed / 0 warnings / 0 failed en ambos nodos.", cost:"✓ hecho",
+    items:["t440p-server: 10.10.20.100 · master · Fedora 42 · 26/0/0 [PASS]","t430: 10.10.20.101 · worker · Fedora 42 · 26/0/0 [PASS]","Fixes aplicados: hostname, swap, SELinux, firewalld, módulos, sysctl, NTP"] },
+  { n:5, title:"SSDs para nodos K3s (HDDs → SSDs)", mach:["T430","T440p Master"], pal:"red",
     reason:"etcd requiere latencia <10ms. HDDs mecánicos causan timeouts y corrompen Longhorn.", cost:"~$80–120",
     items:["2× SSD SATA 1TB para Ultrabays","1× SSD SATA 1TB para bahía principal del T440p"] },
-  { n:5, title:"Definir Worker Node 2 (P52 recomendado)", mach:["P52"], pal:"amber",
+  { n:6, title:"Definir Worker Node 2 (P52 recomendado)", mach:["P52"], pal:"amber",
     reason:"Sin tercer nodo, Longhorn no puede replicar 2× y no hay tolerancia a fallos real.", cost:"$0 (hardware existente)",
     items:["Instalar Fedora Server minimal en P52","Unir como K3s agent","Configurar taints build/prod"] },
-  { n:6, title:"RAM expansión ThinkPad P52", mach:["P52"], pal:"amber",
+  { n:7, title:"RAM expansión ThinkPad P52", mach:["P52"], pal:"amber",
     reason:"32GB no permiten build + ML + K3s agent simultáneamente. 64GB = nodo más potente.", cost:"~$80",
     items:["2× SO-DIMM DDR4-2666 32GB en los 2 slots libres"] },
-  { n:7, title:"NVMe secundario para P52", mach:["P52"], pal:"blue",
+  { n:8, title:"NVMe secundario para P52", mach:["P52"], pal:"blue",
     reason:"Slot M.2 secundario vacío — ideal para Longhorn volumes, imágenes OCI y datasets ML.", cost:"~$60–80",
     items:["1× NVMe M.2 2280 2TB (Samsung 990 EVO o similar)"] },
-  { n:8, title:"UPS para M720q + switch", mach:["M720q","Switch"], pal:"blue",
+  { n:9, title:"UPS para M720q + switch", mach:["M720q","Switch"], pal:"blue",
     reason:"Caída de luz sin UPS corrompe etcd y tumba el cluster sin shutdown graceful.", cost:"~$80–120",
     items:["UPS 650VA con AVR (APC Back-UPS ES 650)"] },
 ];
@@ -174,6 +177,7 @@ export default function App() {
           <span style={{marginLeft:6,padding:"2px 8px",borderRadius:4,background:P.teal[0],color:P.teal[2],fontSize:11,fontWeight:500}}>pfSense ✓</span>
           <span style={{marginLeft:6,padding:"2px 8px",borderRadius:4,background:P.green[0],color:P.green[2],fontSize:11,fontWeight:500}}>AdGuard ✓</span>
           <span style={{marginLeft:6,padding:"2px 8px",borderRadius:4,background:P.teal[0],color:P.teal[2],fontSize:11,fontWeight:500}}>VLANs Persistent ✓</span>
+          <span style={{marginLeft:6,padding:"2px 8px",borderRadius:4,background:P.blue[0],color:P.blue[2],fontSize:11,fontWeight:500}}>K3s Pre-check ✓</span>
         </p>
         <div style={{display:"flex",gap:2,overflowX:"auto"}}>
           {tabs.map(t=>(
@@ -1356,22 +1360,50 @@ function K3s({P}) {
   const aid="aK2"; const AH=`url(#${aid})`;
   return (
     <div>
-      <p style={{fontSize:14,color:P.txts,margin:"0 0 20px"}}>Cluster K3s: T440p (master) + T430 (worker 1) + P52 (worker 2). T440p Parrot OS aislado en VLAN 90.</p>
-      <div style={{padding:"10px 16px",background:P.amber[0],border:`0.5px solid ${P.amber[1]}`,borderRadius:8,marginBottom:20,fontSize:13,color:P.amber[2]}}>
-        Ver pestaña "⭐ Worker 2" para análisis completo del P52 como tercer nodo.
+      <p style={{fontSize:14,color:P.txts,margin:"0 0 16px"}}>Cluster K3s: t440p-server (master) + t430 (worker1) + P52 (worker2 pendiente). T440p Parrot OS aislado en VLAN 90.</p>
+
+      {/* Node status cards */}
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10,marginBottom:20}}>
+        {[
+          {label:"t440p-server",role:"control-plane",ip:"10.10.20.100",status:"✅ READY",pal:"blue",
+           specs:"i7-4712MQ · 16GB · 465GB",detail:"26 passed · 0 warnings · 0 failed"},
+          {label:"t430",role:"worker1",ip:"10.10.20.101",status:"✅ READY",pal:"purple",
+           specs:"i7-3630QM · 16GB · 464GB",detail:"26 passed · 0 warnings · 0 failed"},
+          {label:"P52",role:"worker2",ip:"pending",status:"⏳ PENDING",pal:"amber",
+           specs:"i7 6C/12T · 32GB · NVMe",detail:"Pre-check not yet run"},
+        ].map(n=>{
+          const cp=P[n.pal];
+          return (
+            <div key={n.label} style={{padding:14,background:cp[0],borderRadius:10,border:`0.5px solid ${cp[1]}`}}>
+              <div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}>
+                <span style={{fontSize:13,fontWeight:600,color:cp[2],fontFamily:"var(--font-mono)"}}>{n.label}</span>
+                <span style={{fontSize:11,color:cp[2]}}>{n.status}</span>
+              </div>
+              <div style={{fontSize:11,color:cp[2],marginBottom:2}}>{n.role} · {n.ip}</div>
+              <div style={{fontSize:11,color:cp[2],opacity:0.8,marginBottom:4}}>{n.specs}</div>
+              <div style={{fontSize:10,color:cp[2],opacity:0.7}}>{n.detail}</div>
+            </div>
+          );
+        })}
       </div>
+
+      {/* Install status */}
+      <div style={{padding:"12px 16px",background:P.blue[0],border:`0.5px solid ${P.blue[1]}`,borderRadius:8,marginBottom:20,fontSize:13,color:P.blue[2]}}>
+        <strong>Pre-installation complete.</strong> Both nodes passed all 26 checks. Next: install K3s server on t440p-server, then join t430 as agent.
+      </div>
+
       <svg width="100%" viewBox="0 0 660 510" role="img">
         <title>Arquitectura del cluster K3s</title>
         <Arr id={aid} col={P.line}/>
-        <Nd x={170} y={14} w={320} h={72} rx={10} p={P.blue} t="K3s Control Plane" s="T440p · i7-4712MQ · 16GB DDR3L · Fedora Server"/>
+        <Nd x={170} y={14} w={320} h={72} rx={10} p={P.blue} t="K3s Control Plane — t440p-server" s="10.10.20.100 · i7-4712MQ · 16GB · Fedora 42 · ✅ READY"/>
         <text x={330} y={104} textAnchor="middle" fontSize="10" fill={P.txts}>GitOps + CI/CD workloads</text>
         {[["ArgoCD",50],["Gitea",158],["Tekton",266],["Harbor",374],["cert-mgr",490]].map(([l,x])=>(
           <g key={l}><rect x={x-46} y={114} width={94} height={24} rx={4} fill={P.blue[0]} stroke={P.blue[1]} strokeWidth="0.5"/>
             <text x={x} y={126} textAnchor="middle" dominantBaseline="central" fontSize="11" fontWeight="500" fill={P.blue[2]}>{l}</text>
           </g>
         ))}
-        <Nd x={10}  y={178} w={290} h={68} rx={10} p={P.purple} t="Worker Node 1 · T430" s="i7-3xxx · 16GB DDR3 · Fedora Server"/>
-        <Nd x={360} y={178} w={290} h={68} rx={10} p={P.amber}  t="Worker Node 2 · P52 ✓" s="i7 6C/12T · 32→64GB DDR4 · Fedora"/>
+        <Nd x={10}  y={178} w={290} h={68} rx={10} p={P.purple} t="Worker Node 1 · t430" s="10.10.20.101 · i7-3630QM · 16GB · Fedora 42 · ✅ READY"/>
+        <Nd x={360} y={178} w={290} h={68} rx={10} p={P.amber}  t="Worker Node 2 · P52 ⏳" s="i7 6C/12T · 32→64GB DDR4 · pending setup"/>
         <Ln x1={225} y1={86} x2={100} y2={178} col={P.line} dash="5 4" arr={aid}/>
         <Ln x1={435} y1={86} x2={560} y2={178} col={P.line} dash="5 4" arr={aid}/>
         {[["Longhorn",54],["Prometheus",155],["Grafana",256]].map(([l,x])=>(
@@ -1388,18 +1420,42 @@ function K3s({P}) {
           <text x={90} y={362} textAnchor="middle" dominantBaseline="central" fontSize="11" fontWeight="500" fill={P.red[2]}>T440p Parrot OS</text>
           <text x={90} y={380} textAnchor="middle" dominantBaseline="central" fontSize="10" fill={P.red[2]}>VLAN 90 · NO cluster</text>
         </g>
-        <Nd x={190} y={344} w={280} h={40} rx={10} p={P.teal}  t="Traefik Ingress · MetalLB · CoreDNS"/>
+        <Nd x={190} y={344} w={280} h={40} rx={10} p={P.teal}  t="Traefik v3 (int) · Nginx (ext) · CoreDNS"/>
         <Ln x1={330} y1={248} x2={330} y2={344} col={P.line} dash="3 3" arr={aid}/>
         <Nd x={190} y={406} w={280} h={40} rx={10} p={P.green} t="Longhorn CSI · Persistent Volumes"/>
         <Ln x1={330} y1={384} x2={330} y2={406} col={P.line} arr={aid}/>
-        <Nd x={190} y={464} w={280} h={36} rx={10} p={P.gray}  t="VLAN 20 PROD · 10.10.20.0/24"/>
+        <Nd x={190} y={464} w={280} h={36} rx={10} p={P.gray}  t="VLAN 20 PROD · 10.10.20.0/24 · Cilium eBPF"/>
         <Ln x1={330} y1={446} x2={330} y2={464} col={P.line} arr={aid}/>
       </svg>
-      <div style={{marginTop:20,padding:16,background:P.bg2,borderRadius:8}}>
-        <div style={{fontSize:13,fontWeight:500,marginBottom:10,color:P.txt}}>Stack del cluster</div>
-        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(180px,1fr))",gap:8}}>
-          {[["Orchestration","K3s (Fedora minimal)"],["GitOps","ArgoCD + Flux"],["Registry","Harbor OCI"],["Ingress","Traefik v3"],["LB","MetalLB (L2 mode)"],["Storage","Longhorn CSI"],["DNS","CoreDNS"],["TLS","cert-manager + ACME"],["Secrets","External Secrets + Vault"],["Monitoring","Prometheus + Grafana"],["Logging","Loki + Promtail"],["Tracing","Tempo / Jaeger"]].map(([k,v])=>(
-            <div key={k} style={{fontSize:12}}><span style={{color:P.txts}}>{k}: </span><span style={{color:P.txt,fontFamily:"var(--font-mono)"}}>{v}</span></div>
+
+      <div style={{marginTop:20,display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+        <div style={{padding:16,background:P.bg2,borderRadius:8}}>
+          <div style={{fontSize:13,fontWeight:500,marginBottom:10,color:P.txt}}>Install commands — Cilium stack</div>
+          <pre style={{fontFamily:"var(--font-mono)",fontSize:11,color:P.txt,lineHeight:1.9,margin:0,whiteSpace:"pre-wrap"}}>
+            {`# Master — sin Flannel ni Traefik (Cilium los reemplaza)\ncurl -sfL https://get.k3s.io | \\\n  INSTALL_K3S_EXEC="--selinux \\\n    --write-kubeconfig-mode 644 \\\n    --tls-san 10.10.20.100 \\\n    --flannel-backend=none \\\n    --disable-network-policy \\\n    --disable=traefik" sh -\n\n# Instalar Cilium CNI\nhelm repo add cilium https://helm.cilium.io\nhelm install cilium cilium/cilium \\\n  -n kube-system \\\n  --set l2announcements.enabled=true \\\n  --set hubble.relay.enabled=true \\\n  --set hubble.ui.enabled=true\n\n# Worker (t430)\ncurl -sfL https://get.k3s.io | \\\n  K3S_URL=https://10.10.20.100:6443 \\\n  K3S_TOKEN=<TOKEN> \\\n  INSTALL_K3S_EXEC="--selinux" sh -`}
+          </pre>
+        </div>
+        <div style={{padding:16,background:P.bg2,borderRadius:8,overflowY:"auto",maxHeight:500}}>
+          <div style={{fontSize:13,fontWeight:500,marginBottom:12,color:P.txt}}>Enterprise Stack</div>
+          {[
+            {cat:"Orchestration",     items:[["K3s","control-plane + agents (Fedora 42)"],["Helm v3","package manager"]]},
+            {cat:"CNI & Networking",  items:[["Cilium","eBPF CNI · L2 LB · NetworkPolicy"],["Hubble","flow observability · L7 visibility"]]},
+            {cat:"Service Mesh",      items:[["Istio","mTLS · traffic mgmt · canary releases"],["Kiali","service mesh topology dashboard"]]},
+            {cat:"Ingress",           items:[["Traefik v3","internal services · lab admin UIs"],["Nginx Ingress","external · production-exposed services"]]},
+            {cat:"Storage & TLS",     items:[["Longhorn CSI","distributed block storage 2× replica"],["cert-manager","TLS · ACME · Let's Encrypt"]]},
+            {cat:"GitOps & CI/CD",    items:[["ArgoCD","pull-based GitOps deployments"],["Tekton","CI pipelines · SAST"],["Gitea","self-hosted Git + webhooks"],["Harbor","OCI registry + vulnerability scan"]]},
+            {cat:"IAM & Secrets",     items:[["Keycloak","OIDC IdP · SAML · realms"],["Vault","secrets management · PKI"],["External Secrets","Vault → K8s secrets sync"]]},
+            {cat:"Observability",     items:[["Prometheus","metrics scraping + storage"],["Grafana","dashboards + alerting UI"],["Loki","log aggregation · LogQL"],["Tempo","distributed tracing · OTLP"],["Alertmanager","alert routing + silencing"]]},
+          ].map(({cat,items})=>(
+            <div key={cat} style={{marginBottom:10}}>
+              <div style={{fontSize:10,fontWeight:700,color:P.txts,marginBottom:4,textTransform:"uppercase",letterSpacing:"0.07em"}}>{cat}</div>
+              {items.map(([name,desc])=>(
+                <div key={name} style={{display:"flex",gap:6,marginBottom:3,fontSize:12}}>
+                  <span style={{fontFamily:"var(--font-mono)",color:P.txt,minWidth:110,flexShrink:0}}>{name}</span>
+                  <span style={{color:P.txts,fontSize:11}}>{desc}</span>
+                </div>
+              ))}
+            </div>
           ))}
         </div>
       </div>
