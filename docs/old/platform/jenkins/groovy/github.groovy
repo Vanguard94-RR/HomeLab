@@ -1,1 +1,0 @@
-println("GitHub bootstrap initialized")

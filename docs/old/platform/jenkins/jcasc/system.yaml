@@ -1,6 +1,0 @@
-jenkins:
-  systemMessage: "HomeLab Jenkins"
-
-  numExecutors: 2
-
-  mode: NORMAL
