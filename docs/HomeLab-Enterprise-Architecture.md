@@ -87,25 +87,25 @@ flowchart TB
   workstation["P53 Daily Driver<br/>kubectl, k9s, Lens, IDE"]
   ai["P53/P52 Local AI<br/>Ollama, coding models"]
 
-  subgraph edge["Edge and Virtualization Layer"]
+  subgraph edgeLayer["Edge and Virtualization Layer"]
     isp["Telmex / Nokia GPON<br/>192.168.1.254"]
     proxmox["Lenovo M720q<br/>Proxmox VE"]
     pfsense["pfSense CE VM<br/>Routing, NAT, firewall"]
     adguard["AdGuard Home LXC<br/>DNS, filtering, rewrites"]
   end
 
-  subgraph network["Segmented LAN"]
+  subgraph networkLayer["Segmented LAN"]
     switch["TP-Link TL-SG108E<br/>802.1Q managed switch"]
     vlans["VLANs 10/20/30/40/50/90"]
   end
 
-  subgraph cluster["K3s Platform Cluster"]
+  subgraph clusterLayer["K3s Platform Cluster"]
     master["T440p<br/>K3s control-plane"]
     worker1["T430<br/>K3s worker 1"]
     worker2["P52<br/>K3s worker 2 / builds / ML"]
   end
 
-  subgraph platform["Platform Services"]
+  subgraph platformLayer["Platform Services"]
     argocd["ArgoCD<br/>GitOps reconciliation"]
     jenkins["Jenkins<br/>CI only"]
     vault["Vault<br/>Secrets authority"]
@@ -142,6 +142,32 @@ flowchart TB
   keycloak --> observability
   longhorn --> platform
   ingress --> platform
+
+  classDef person fill:#f8fafc,stroke:#475569,color:#0f172a
+  classDef edge fill:#e0f2fe,stroke:#0284c7,color:#075985
+  classDef network fill:#dbeafe,stroke:#2563eb,color:#1e40af
+  classDef k8s fill:#f3e8ff,stroke:#9333ea,color:#6b21a8
+  classDef gitops fill:#dcfce7,stroke:#16a34a,color:#166534
+  classDef iam fill:#fef3c7,stroke:#d97706,color:#92400e
+  classDef storage fill:#ccfbf1,stroke:#0f766e,color:#115e59
+  classDef obs fill:#e0e7ff,stroke:#4f46e5,color:#3730a3
+  classDef security fill:#fee2e2,stroke:#dc2626,color:#991b1b
+
+  class admin,workstation person
+  class github,argocd,jenkins gitops
+  class isp,proxmox,pfsense,adguard edge
+  class switch,vlans network
+  class master,worker1,worker2 k8s
+  class vault,eso,keycloak iam
+  class longhorn storage
+  class observability obs
+  class ingress security
+  class ai k8s
+
+  style edgeLayer fill:#eff6ff,stroke:#60a5fa
+  style networkLayer fill:#eff6ff,stroke:#2563eb
+  style clusterLayer fill:#faf5ff,stroke:#a855f7
+  style platformLayer fill:#f8fafc,stroke:#64748b
 ```
 
 ### Architectural Intent
@@ -185,6 +211,22 @@ flowchart LR
   switch --> t430
   switch -.->|"planned"| p52
   switch --> parrot
+
+  classDef internetClass fill:#f8fafc,stroke:#475569,color:#0f172a
+  classDef edge fill:#e0f2fe,stroke:#0284c7,color:#075985
+  classDef network fill:#dbeafe,stroke:#2563eb,color:#1e40af
+  classDef k8s fill:#f3e8ff,stroke:#9333ea,color:#6b21a8
+  classDef security fill:#fee2e2,stroke:#dc2626,color:#991b1b
+
+  class internet,gpon internetClass
+  class vmbr0,vmbr1,pfsense,adguard edge
+  class switch network
+  class t440p,t430,p52 k8s
+  class parrot security
+
+  style m720q fill:#eff6ff,stroke:#0284c7
+  style vlan20 fill:#faf5ff,stroke:#9333ea
+  style vlan90 fill:#fef2f2,stroke:#dc2626
 ```
 
 ### VLAN Plan
@@ -226,6 +268,18 @@ flowchart TB
   pentest -.->|"block 10.10.0.0/8"| dev
   pentest -.->|"block 10.10.0.0/8"| storage
   pentest -.->|"block 10.10.0.0/8"| dmz
+
+  classDef network fill:#dbeafe,stroke:#2563eb,color:#1e40af
+  classDef k8s fill:#f3e8ff,stroke:#9333ea,color:#6b21a8
+  classDef storageClass fill:#ccfbf1,stroke:#0f766e,color:#115e59
+  classDef security fill:#fee2e2,stroke:#dc2626,color:#991b1b
+  classDef internetClass fill:#f8fafc,stroke:#475569,color:#0f172a
+
+  class mgmt,dev network
+  class prod k8s
+  class storage storageClass
+  class dmz,pentest security
+  class internet internetClass
 ```
 
 Key policy decision: the pentesting machine is physically and logically isolated. It may reach the internet, but must not reach internal lab networks.
@@ -258,6 +312,19 @@ flowchart TB
   w1 --> flannel
   w2 --> flannel
   traefik --> metallb
+
+  classDef node fill:#f3e8ff,stroke:#9333ea,color:#6b21a8
+  classDef k8s fill:#ede9fe,stroke:#7c3aed,color:#5b21b6
+  classDef network fill:#dbeafe,stroke:#2563eb,color:#1e40af
+  classDef security fill:#fee2e2,stroke:#dc2626,color:#991b1b
+
+  class cp,w1,w2 node
+  class coredns,flannel,svc k8s
+  class metallb network
+  class traefik security
+
+  style vlan20 fill:#faf5ff,stroke:#9333ea
+  style cluster fill:#f8fafc,stroke:#7c3aed
 ```
 
 Current K3s evidence shows node readiness, not full cluster reconciliation. The next architecture milestone should document:
@@ -283,25 +350,38 @@ Current K3s evidence shows node readiness, not full cluster reconciliation. The 
 ## 7. GitOps and CI/CD Target Architecture
 
 ```mermaid
-sequenceDiagram
-  autonumber
-  participant Dev as Developer / Admin
-  participant Git as GitHub
-  participant CI as Jenkins CI
-  participant Reg as Container Registry
-  participant Repo as GitOps State
-  participant CD as ArgoCD
-  participant K8s as K3s Cluster
+flowchart LR
+  dev["Developer / Admin"]
+  git["GitHub<br/>source and desired state"]
+  ci["Jenkins CI<br/>lint, test, build, scan"]
+  reg["Container Registry<br/>immutable image tags"]
+  state["GitOps State<br/>Helm/Kustomize values"]
+  cd["ArgoCD<br/>reconciliation"]
+  k8s["K3s Cluster<br/>runtime state"]
+  health["Health / Sync Status"]
 
-  Dev->>Git: Push application or platform change
-  Git->>CI: Webhook triggers pipeline
-  CI->>CI: Lint, test, build, scan
-  CI->>Reg: Push immutable image tag
-  CI->>Repo: Commit Helm/Kustomize value update
-  Repo->>CD: ArgoCD detects desired-state change
-  CD->>K8s: Reconcile manifests
-  K8s-->>CD: Health and sync status
-  CD-->>Dev: Deployment visible as GitOps state
+  dev -->|"push change"| git
+  git -->|"webhook"| ci
+  ci -->|"publish image"| reg
+  ci -->|"commit image tag"| state
+  state -->|"desired-state change"| cd
+  cd -->|"apply and prune"| k8s
+  k8s --> health
+  health -->|"visible feedback"| dev
+
+  classDef person fill:#f8fafc,stroke:#475569,color:#0f172a
+  classDef gitops fill:#dcfce7,stroke:#16a34a,color:#166534
+  classDef ciClass fill:#e0f2fe,stroke:#0284c7,color:#075985
+  classDef registry fill:#ccfbf1,stroke:#0f766e,color:#115e59
+  classDef k8sClass fill:#f3e8ff,stroke:#9333ea,color:#6b21a8
+  classDef obs fill:#e0e7ff,stroke:#4f46e5,color:#3730a3
+
+  class dev person
+  class git,state,cd gitops
+  class ci ciClass
+  class reg registry
+  class k8s k8sClass
+  class health obs
 ```
 
 ### CI/CD Contract
@@ -389,6 +469,26 @@ flowchart LR
   k8ssecret --> apps
   groups --> rbac
   rbac --> ns
+
+  classDef person fill:#f8fafc,stroke:#475569,color:#0f172a
+  classDef iam fill:#fef3c7,stroke:#d97706,color:#92400e
+  classDef gitops fill:#dcfce7,stroke:#16a34a,color:#166534
+  classDef obs fill:#e0e7ff,stroke:#4f46e5,color:#3730a3
+  classDef secretsClass fill:#ffedd5,stroke:#f97316,color:#9a3412
+  classDef k8sClass fill:#f3e8ff,stroke:#9333ea,color:#6b21a8
+  classDef registry fill:#ccfbf1,stroke:#0f766e,color:#115e59
+
+  class user person
+  class keycloak,groups iam
+  class argocd,jenkins gitops
+  class grafana obs
+  class harbor registry
+  class vault,eso,k8ssecret secretsClass
+  class sa,rbac,ns k8sClass
+
+  style apps fill:#f8fafc,stroke:#64748b
+  style secrets fill:#fff7ed,stroke:#f97316
+  style k8s fill:#faf5ff,stroke:#9333ea
 ```
 
 ### IAM Target Controls
@@ -435,6 +535,22 @@ flowchart TB
   snapshots --> offline
   git --> backups
   vaultbackup --> backups
+
+  classDef hardware fill:#f8fafc,stroke:#475569,color:#0f172a
+  classDef storageClass fill:#ccfbf1,stroke:#0f766e,color:#115e59
+  classDef backup fill:#dcfce7,stroke:#16a34a,color:#166534
+  classDef gitops fill:#e0f2fe,stroke:#0284c7,color:#075985
+  classDef secrets fill:#fef3c7,stroke:#d97706,color:#92400e
+
+  class t440disk,t430disk,p52disk hardware
+  class replicas,pvc,snapshots storageClass
+  class nas,offline backup
+  class git gitops
+  class vaultbackup secrets
+
+  style disks fill:#f8fafc,stroke:#64748b
+  style longhorn fill:#ecfeff,stroke:#0f766e
+  style backups fill:#f0fdf4,stroke:#16a34a
 ```
 
 ### Storage Strategy
