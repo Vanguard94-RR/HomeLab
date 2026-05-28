@@ -135,19 +135,22 @@ const UPGRADES = [
   { n:2, title:"pfSense ✓ inter-VLAN router configurado", mach:["VM 100 · M720q"], pal:"teal",
     reason:"COMPLETADO — pfSense CE 2.7.2 con 7 interfaces activas, DHCP por VLAN, reglas de firewall enterprise, PENTEST completamente aislado.", cost:"✓ hecho",
     items:["WAN: 192.168.1.131 · LAN: 10.10.10.1","Interfaces PROD/DEV/STORAGE/DMZ/PENTEST configuradas","DHCP activo en VLAN 20/30/90","Firewall: PENTEST bloqueado de redes internas"] },
-  { n:3, title:"SSDs para nodos K3s (HDDs → SSDs)", mach:["T430","T440p Master"], pal:"red",
+  { n:3, title:"VLANs Persistence ✓ bridge-vlan-aware persistente", mach:["M720q · Proxmox"], pal:"teal",
+    reason:"COMPLETADO — /etc/network/interfaces contiene bridge-vlan-aware yes y bridge-vids 2-4094 en vmbr1. VLANs sobreviven reboot. Verificado: tap199i0 VLAN 10, veth101i0 VLAN 10.", cost:"✓ hecho",
+    items:["bridge-vlan-aware yes en vmbr1","bridge-vids 2-4094 — acepta cualquier VLAN sin cambios","VM 199 tag=10 ✓ · LXC 101 eth0 tag=10 ✓ · pfSense trunk sin tag ✓"] },
+  { n:4, title:"SSDs para nodos K3s (HDDs → SSDs)", mach:["T430","T440p Master"], pal:"red",
     reason:"etcd requiere latencia <10ms. HDDs mecánicos causan timeouts y corrompen Longhorn.", cost:"~$80–120",
     items:["2× SSD SATA 1TB para Ultrabays","1× SSD SATA 1TB para bahía principal del T440p"] },
-  { n:4, title:"Definir Worker Node 2 (P52 recomendado)", mach:["P52"], pal:"amber",
+  { n:5, title:"Definir Worker Node 2 (P52 recomendado)", mach:["P52"], pal:"amber",
     reason:"Sin tercer nodo, Longhorn no puede replicar 2× y no hay tolerancia a fallos real.", cost:"$0 (hardware existente)",
     items:["Instalar Fedora Server minimal en P52","Unir como K3s agent","Configurar taints build/prod"] },
-  { n:5, title:"RAM expansión ThinkPad P52", mach:["P52"], pal:"amber",
+  { n:6, title:"RAM expansión ThinkPad P52", mach:["P52"], pal:"amber",
     reason:"32GB no permiten build + ML + K3s agent simultáneamente. 64GB = nodo más potente.", cost:"~$80",
     items:["2× SO-DIMM DDR4-2666 32GB en los 2 slots libres"] },
-  { n:6, title:"NVMe secundario para P52", mach:["P52"], pal:"blue",
+  { n:7, title:"NVMe secundario para P52", mach:["P52"], pal:"blue",
     reason:"Slot M.2 secundario vacío — ideal para Longhorn volumes, imágenes OCI y datasets ML.", cost:"~$60–80",
     items:["1× NVMe M.2 2280 2TB (Samsung 990 EVO o similar)"] },
-  { n:7, title:"UPS para M720q + switch", mach:["M720q","Switch"], pal:"blue",
+  { n:8, title:"UPS para M720q + switch", mach:["M720q","Switch"], pal:"blue",
     reason:"Caída de luz sin UPS corrompe etcd y tumba el cluster sin shutdown graceful.", cost:"~$80–120",
     items:["UPS 650VA con AVR (APC Back-UPS ES 650)"] },
 ];
@@ -169,6 +172,8 @@ export default function App() {
           <span style={{marginLeft:10,padding:"2px 8px",borderRadius:4,background:P.teal[0],color:P.teal[2],fontSize:11,fontWeight:500}}>Corregido: 2 T440p</span>
           <span style={{marginLeft:6,padding:"2px 8px",borderRadius:4,background:P.green[0],color:P.green[2],fontSize:11,fontWeight:500}}>Switch ✓ VLANs ✓</span>
           <span style={{marginLeft:6,padding:"2px 8px",borderRadius:4,background:P.teal[0],color:P.teal[2],fontSize:11,fontWeight:500}}>pfSense ✓</span>
+          <span style={{marginLeft:6,padding:"2px 8px",borderRadius:4,background:P.green[0],color:P.green[2],fontSize:11,fontWeight:500}}>AdGuard ✓</span>
+          <span style={{marginLeft:6,padding:"2px 8px",borderRadius:4,background:P.teal[0],color:P.teal[2],fontSize:11,fontWeight:500}}>VLANs Persistent ✓</span>
         </p>
         <div style={{display:"flex",gap:2,overflowX:"auto"}}>
           {tabs.map(t=>(
@@ -464,7 +469,7 @@ function Network({P}) {
 // ── Switch & VLANs ─────────────────────────────────────────────────────────────
 function SwitchVlan({P}) {
   const [activeTab, setActiveTab] = useState("overview");
-  const subTabs=[{id:"overview",l:"Overview"},{id:"ports",l:"Port Layout"},{id:"vlans",l:"VLAN Table"},{id:"pvid",l:"PVID Config"},{id:"proxmox",l:"Proxmox Bridge"}];
+  const subTabs=[{id:"overview",l:"Overview"},{id:"ports",l:"Port Layout"},{id:"vlans",l:"VLAN Table"},{id:"pvid",l:"PVID Config"},{id:"proxmox",l:"Proxmox Bridge"},{id:"persist",l:"✅ Persistence"}];
 
   const vlans=[
     {id:1,  name:"Default",  tagged:"—",    untagged:"1-8", subnet:"—",             pal:"gray"},
@@ -708,6 +713,57 @@ function SwitchVlan({P}) {
                 </div>
               );
             })}
+          </div>
+        </div>
+      )}
+
+      {activeTab==="persist" && (
+        <div>
+          <div style={{padding:"14px 18px",background:P.teal[0],border:`0.5px solid ${P.teal[1]}`,borderRadius:12,marginBottom:20}}>
+            <div style={{fontSize:14,fontWeight:500,color:P.teal[2],marginBottom:4}}>✅ VLAN Persistence — Verified & Active</div>
+            <div style={{fontSize:13,color:P.teal[2]}}>vmbr1 has <code>bridge-vlan-aware yes</code> and <code>bridge-vids 2-4094</code> in <code>/etc/network/interfaces</code>. VLANs survive reboots without manual intervention.</div>
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:16}}>
+            <div style={{padding:16,background:P.bg2,borderRadius:8}}>
+              <div style={{fontSize:13,fontWeight:500,color:P.txt,marginBottom:12}}>Key parameters in /etc/network/interfaces</div>
+              {[
+                {param:"bridge-vlan-aware yes",effect:"Enables 802.1Q mode — without this, all VLAN tags are stripped"},
+                {param:"bridge-vids 2-4094",  effect:"Physical port accepts any VLAN tag — no changes needed when adding new VLANs"},
+                {param:"tag=10 on VM/LXC",    effect:"Bridge port assigned to VLAN 10 — frames tagged/untagged at the bridge"},
+                {param:"no tag on pfSense",   effect:"Trunk mode — pfSense receives all tagged frames and handles 802.1Q internally"},
+              ].map(p=>(
+                <div key={p.param} style={{marginBottom:10,padding:"8px 10px",background:P.bg,borderRadius:6,border:`0.5px solid ${P.bdr}`}}>
+                  <div style={{fontSize:11,fontFamily:"var(--font-mono)",color:P.blue[1],marginBottom:3}}>{p.param}</div>
+                  <div style={{fontSize:11,color:P.txts}}>{p.effect}</div>
+                </div>
+              ))}
+            </div>
+            <div style={{padding:16,background:P.bg2,borderRadius:8}}>
+              <div style={{fontSize:13,fontWeight:500,color:P.txt,marginBottom:12}}>Active bridge VLAN table (verified)</div>
+              {[
+                {port:"enp1s0f0",  vlan:"1 + 2-4094",  role:"Physical trunk → TL-SG108E",    ok:true},
+                {port:"tap100i1",  vlan:"1 (trunk)",    role:"pfSense LAN — no tag",          ok:true},
+                {port:"tap199i0",  vlan:"10 PVID",      role:"Windows VM — VLAN 10 MGMT",     ok:true},
+                {port:"veth101i0", vlan:"10 PVID",      role:"AdGuard eth0 — VLAN 10 MGMT",   ok:true},
+                {port:"veth101i1", vlan:"1 PVID",       role:"AdGuard eth1 — vmbr0 Telmex",   ok:true},
+              ].map(r=>(
+                <div key={r.port} style={{display:"flex",alignItems:"center",gap:8,marginBottom:8,fontSize:12}}>
+                  <span style={{color:P.green[1],flexShrink:0}}>✓</span>
+                  <span style={{fontFamily:"var(--font-mono)",color:P.txt,minWidth:100,flexShrink:0}}>{r.port}</span>
+                  <span style={{padding:"1px 6px",borderRadius:3,background:P.blue[0],color:P.blue[2],fontSize:11,flexShrink:0}}>{r.vlan}</span>
+                  <span style={{color:P.txts}}>{r.role}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div style={{padding:16,background:P.bg2,borderRadius:8,marginBottom:12}}>
+            <div style={{fontSize:13,fontWeight:500,color:P.txt,marginBottom:10}}>Verification commands</div>
+            <pre style={{fontFamily:"var(--font-mono)",fontSize:12,color:P.txt,lineHeight:1.9,margin:0,whiteSpace:"pre-wrap"}}>
+              {`# Verify VLAN-aware mode is active\ncat /sys/class/net/vmbr1/bridge/vlan_filtering\n# Expected: 1\n\n# Show active port VLAN assignments\nbridge vlan show | grep -E "^(tap|veth)" | grep -v "^\\s"\n\n# Verify config survives reboot\ngrep -A6 "auto vmbr1" /etc/network/interfaces`}
+            </pre>
+          </div>
+          <div style={{padding:14,background:P.amber[0],border:`0.5px solid ${P.amber[1]}`,borderRadius:8,fontSize:13,color:P.amber[2]}}>
+            <strong>Adding new VLANs:</strong> No changes to <code>/etc/network/interfaces</code> needed. Add VLAN to TL-SG108E switch → add interface in pfSense → assign <code>tag=N</code> to VM/LXC. The <code>bridge-vids 2-4094</code> range handles it automatically.
           </div>
         </div>
       )}
@@ -1066,11 +1122,11 @@ function AdGuard({P}) {
 
             {/* AdGuard LXC */}
             <rect x={350} y={44} width={280} height={100} rx={8} fill={P.green[0]} stroke={P.green[1]} strokeWidth="1"/>
-            <text x={490} y={68} textAnchor="middle" dominantBaseline="central" fontSize="12" fontWeight="500" fill={P.green[2]}>AdGuard Home LXC</text>
-            <text x={490} y={84} textAnchor="middle" dominantBaseline="central" fontSize="10" fill={P.green[2]}>1 vCPU · 512MB RAM · 8GB disk</text>
-            <text x={490} y={100} textAnchor="middle" dominantBaseline="central" fontSize="10" fill={P.green[2]}>IP actual: 192.168.1.100 (temporal)</text>
-            <text x={490} y={116} textAnchor="middle" dominantBaseline="central" fontSize="10" fill={P.green[2]}>Post-pfSense: 10.10.10.3 (VLAN 10)</text>
-            <text x={490} y={132} textAnchor="middle" dominantBaseline="central" fontSize="10" fill={P.green[2]}>Unprivileged · nesting=1</text>
+            <text x={490} y={68} textAnchor="middle" dominantBaseline="central" fontSize="12" fontWeight="500" fill={P.green[2]}>AdGuard Home LXC ✓</text>
+            <text x={490} y={84} textAnchor="middle" dominantBaseline="central" fontSize="10" fill={P.green[2]}>1 vCPU · 256MB RAM · 512MB disk</text>
+            <text x={490} y={100} textAnchor="middle" dominantBaseline="central" fontSize="10" fill={P.green[2]}>eth0: 10.10.10.3 (VLAN 10)</text>
+            <text x={490} y={116} textAnchor="middle" dominantBaseline="central" fontSize="10" fill={P.green[2]}>eth1: 192.168.1.100 (Telmex LAN)</text>
+            <text x={490} y={132} textAnchor="middle" dominantBaseline="central" fontSize="10" fill={P.green[2]}>Dual-homed · Unprivileged · nesting=1</text>
 
             {/* Arrow pfSense → AdGuard */}
             <line x1={310} y1={94} x2={350} y2={94} stroke={P.green[1]} strokeWidth="1.5" markerEnd="url(#aAG)"/>
@@ -1092,8 +1148,7 @@ function AdGuard({P}) {
           <div style={{marginTop:20,padding:"14px 18px",background:P.bg2,border:`0.5px solid ${P.bdr}`,borderRadius:8}}>
             <div style={{fontSize:13,fontWeight:500,color:P.txt,marginBottom:10}}>Creación del contenedor LXC (configuración real usada)</div>
             <pre style={{fontFamily:"var(--font-mono)",fontSize:12,color:P.txts,lineHeight:2,margin:0,whiteSpace:"pre-wrap"}}>
-              <span style={{color:P.txts}}>{`# Template Alpine 3.22 (no Debian) — más ligero y seguro\n`}</span>
-              <span style={{color:P.txts}}>{`# Sin tag VLAN por ahora — switch unmanaged en el momento de la instalación\n`}</span>
+              <span style={{color:P.txts}}>{`# Original creation (flat network — pre-VLAN)\n`}</span>
               <span style={{color:P.green[2]||P.txt}}>{`pct create 101 local:vztmpl/alpine-3.22-default_20250617_amd64.tar.xz \\\n`}</span>
               <span style={{color:P.green[2]||P.txt}}>{`  --hostname adguard-home \\\n`}</span>
               <span style={{color:P.green[2]||P.txt}}>{`  --cores 1 --memory 256 --swap 128 \\\n`}</span>
@@ -1101,8 +1156,10 @@ function AdGuard({P}) {
               <span style={{color:P.green[2]||P.txt}}>{`  --net0 name=eth0,bridge=vmbr0,ip=192.168.1.100/24,gw=192.168.1.254 \\\n`}</span>
               <span style={{color:P.green[2]||P.txt}}>{`  --unprivileged 1 --features nesting=1 \\\n`}</span>
               <span style={{color:P.green[2]||P.txt}}>{`  --start 1 --onboot 1\n\n`}</span>
-              <span style={{color:P.txts}}>{`# Migración post-pfSense → VLAN 10 (10.10.10.3)\n`}</span>
-              <span style={{color:P.txt}}>{`pct stop 101\npct set 101 --net0 name=eth0,bridge=vmbr1,tag=10,ip=10.10.10.3/24,gw=10.10.10.1\npct start 101`}</span>
+              <span style={{color:P.txts}}>{`# Migration to VLAN 10 (eth0)\n`}</span>
+              <span style={{color:P.txt}}>{`pct stop 101\npct set 101 --net0 name=eth0,bridge=vmbr1,tag=10,ip=10.10.10.3/24,gw=10.10.10.1\npct start 101\n\n`}</span>
+              <span style={{color:P.txts}}>{`# Add dual-homed eth1 (Telmex LAN — keeps 192.168.1.100)\n`}</span>
+              <span style={{color:P.txt}}>{`pct stop 101\npct set 101 --net1 name=eth1,bridge=vmbr0,ip=192.168.1.100/24,gw=192.168.1.254\npct start 101`}</span>
             </pre>
           </div>
         </div>
@@ -1116,9 +1173,9 @@ function AdGuard({P}) {
             <div style={{padding:16,background:P.bg2,borderRadius:8}}>
               <div style={{fontSize:13,fontWeight:500,color:P.txt,marginBottom:12}}>Upstream DNS (DoH/DoT)</div>
               {[
-                {provider:"Cloudflare", url:"https://cloudflare-dns.com/dns-query", note:"DoH · DNSSEC · privacy-first"},
-                {provider:"Quad9",      url:"https://dns.quad9.net/dns-query",      note:"DoH · malware blocking"},
-                {provider:"NextDNS",    url:"https://dns.nextdns.io",               note:"DoH · configurable · fallback"},
+                {provider:"Quad9",      url:"https://dns10.quad9.net/dns-query",  note:"DoH · malware blocking · ✓ active"},
+                {provider:"Cloudflare", url:"https://dns.cloudflare.com/dns-query",note:"DoH · DNSSEC · privacy-first · ✓ active"},
+                {provider:"Google",     url:"https://dns.google/dns-query",        note:"DoH · global fallback · ✓ active"},
               ].map(d=>(
                 <div key={d.provider} style={{marginBottom:10,padding:"8px 10px",background:P.bg,borderRadius:6,border:`0.5px solid ${P.bdr}`}}>
                   <div style={{fontSize:12,fontWeight:500,color:P.txt,marginBottom:2}}>{d.provider}</div>
@@ -1131,11 +1188,11 @@ function AdGuard({P}) {
             <div style={{padding:16,background:P.bg2,borderRadius:8}}>
               <div style={{fontSize:13,fontWeight:500,color:P.txt,marginBottom:12}}>Blocklists recomendadas</div>
               {[
-                {name:"AdGuard DNS filter",       url:"filters/15.txt",         domains:"~800K"},
-                {name:"OISD Big",                 url:"oisd.nl/full",            domains:"~4M"},
-                {name:"Steven Black Unified",     url:"steven-black/hosts",      domains:"~200K"},
-                {name:"URLhaus Malware",          url:"urlhaus-filter/hosts",    domains:"~100K"},
-                {name:"Hagezi Pro",               url:"hagezi/dns-blocklists",   domains:"~500K"},
+                {name:"AdGuard DNS filter",       url:"adguard — pre-installed",  domains:"164,088 ✓"},
+                {name:"OISD Big",                 url:"big.oisd.nl",              domains:"441,906 ✓"},
+                {name:"Steven Black Unified",     url:"StevenBlack/hosts",        domains:"83,081 ✓"},
+                {name:"URLhaus Malware",          url:"urlhaus-filter/agh",       domains:"32,507 ✓"},
+                {name:"Hagezi Pro",               url:"hagezi/dns-blocklists",    domains:"209,827 ✓"},
               ].map(b=>(
                 <div key={b.name} style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8,fontSize:12}}>
                   <span style={{color:P.txt}}>{b.name}</span>
@@ -1145,31 +1202,31 @@ function AdGuard({P}) {
             </div>
             {/* Split-horizon DNS */}
             <div style={{padding:16,background:P.bg2,borderRadius:8}}>
-              <div style={{fontSize:13,fontWeight:500,color:P.txt,marginBottom:12}}>Split-horizon DNS</div>
-              <div style={{fontSize:12,color:P.txts,marginBottom:10}}>Zonas internas resueltas localmente, sin salir a internet:</div>
+              <div style={{fontSize:13,fontWeight:500,color:P.txt,marginBottom:12}}>DNS Rewrites — Split-horizon ✓</div>
+              <div style={{fontSize:12,color:P.txts,marginBottom:10}}>Configured and active — internal zones resolved locally:</div>
               {[
-                {zone:"*.lab.internal",  res:"10.10.20.x (K3s MetalLB)"},
-                {zone:"*.cluster.local", res:"CoreDNS del cluster K3s"},
-                {zone:"proxmox.mgmt",    res:"192.168.1.65 (temp) → 10.10.10.65"},
-                {zone:"adguard.mgmt",    res:"192.168.1.100 (temp) → 10.10.10.3"},
-                {zone:"switch.mgmt",     res:"10.10.10.2"},
-                {zone:"pfsense.mgmt",    res:"10.10.10.1 (post-pfSense)"},
+                {zone:"proxmox.mgmt",    res:"192.168.1.65", status:"✓ active"},
+                {zone:"pfsense.mgmt",    res:"10.10.10.1",   status:"✓ active"},
+                {zone:"adguard.mgmt",    res:"192.168.1.100",status:"✓ active"},
+                {zone:"*.lab.internal",  res:"10.10.20.x (K3s MetalLB)", status:"⏳ pending K3s"},
+                {zone:"*.cluster.local", res:"CoreDNS K3s cluster",       status:"⏳ pending K3s"},
               ].map(z=>(
                 <div key={z.zone} style={{display:"flex",gap:8,marginBottom:7,alignItems:"baseline"}}>
                   <span style={{fontSize:11,fontFamily:"var(--font-mono)",color:P.blue[2]||P.txt,minWidth:160,flexShrink:0}}>{z.zone}</span>
                   <span style={{fontSize:11,color:P.txts}}>→ {z.res}</span>
+                  <span style={{fontSize:10,color:z.status.startsWith("✓")?P.green[1]:P.amber[1],marginLeft:"auto"}}>{z.status}</span>
                 </div>
               ))}
             </div>
             {/* pfSense integration */}
             <div style={{padding:16,background:P.bg2,borderRadius:8}}>
-              <div style={{fontSize:13,fontWeight:500,color:P.txt,marginBottom:12}}>Integración pfSense</div>
+              <div style={{fontSize:13,fontWeight:500,color:P.txt,marginBottom:12}}>pfSense DHCP — DNS Distribution ✓</div>
               {[
-                {setting:"DNS Resolver (Unbound)",    action:"Deshabilitar — AdGuard toma ese rol"},
-                {setting:"DNS Forwarder",             action:"Habilitar → forward a 10.10.10.3"},
-                {setting:"DHCP Server (todas VLANs)", action:"DNS option = 10.10.10.3"},
-                {setting:"Firewall rule",             action:"Bloquear DNS (53/853) excepto desde 10.10.10.3"},
-                {setting:"DoT pfSense propio",        action:"Opcional — usar AdGuard como único resolver"},
+                {setting:"VLAN 20 PROD — DNS Server",  action:"10.10.10.3 ✓ configured"},
+                {setting:"VLAN 30 DEV — DNS Server",   action:"10.10.10.3 ✓ configured"},
+                {setting:"VLAN 90 PENTEST — DNS Server",action:"10.10.90.1 (pfSense local — intentional isolation)"},
+                {setting:"VLAN 10 MGMT — DNS",         action:"Static IPs only — no DHCP"},
+                {setting:"Bootstrap DNS (AdGuard)",    action:"9.9.9.9 · 1.1.1.1 · 8.8.8.8 ✓"},
               ].map(s=>(
                 <div key={s.setting} style={{marginBottom:8}}>
                   <div style={{fontSize:12,fontWeight:500,color:P.txt}}>{s.setting}</div>
@@ -1190,11 +1247,12 @@ function AdGuard({P}) {
             {/* AdGuard center */}
             <rect x={240} y={130} width={180} height={60} rx={10} fill={P.green[0]} stroke={P.green[1]} strokeWidth="1.5"/>
             <text x={330} y={154} textAnchor="middle" dominantBaseline="central" fontSize="13" fontWeight="500" fill={P.green[2]}>AdGuard Home</text>
-            <text x={330} y={172} textAnchor="middle" dominantBaseline="central" fontSize="10" fill={P.green[2]}>192.168.1.100 → 10.10.10.3 · LXC</text>
+            <text x={330} y={172} textAnchor="middle" dominantBaseline="central" fontSize="10" fill={P.green[2]}>10.10.10.3 (VLAN10) · 192.168.1.100 (Telmex) · LXC</text>
             {/* Satellites */}
             {[
               {t:"pfSense",         s:"DNS forwarder",         x:30,  y:130, col:P.teal,   lx1:240,ly1:160,lx2:170,ly2:160},
               {t:"Todas las VLANs", s:"DHCP opt 6",            x:30,  y:230, col:P.blue,   lx1:240,ly1:175,lx2:170,ly2:255},
+              {t:"P53 Daily Driver",s:"WiFi + dock ✓",         x:30,  y:30,  col:P.gray,   lx1:240,ly1:145,lx2:170,ly2:56},
               {t:"Prometheus",      s:"scrape :9617",          x:490, y:50,  col:P.amber,  lx1:420,ly1:145,lx2:490,ly2:76},
               {t:"Grafana",         s:"dashboard DNS",         x:490, y:130, col:P.amber,  lx1:420,ly1:160,lx2:490,ly2:160},
               {t:"Traefik Ingress", s:"reverse proxy UI",      x:490, y:210, col:P.purple, lx1:420,ly1:170,lx2:490,ly2:230},
@@ -1210,6 +1268,23 @@ function AdGuard({P}) {
             ))}
           </svg>
           <div style={{marginTop:16,padding:16,background:P.bg2,borderRadius:8}}>
+            <div style={{fontSize:13,fontWeight:500,color:P.txt,marginBottom:10}}>Clients configured — DNS override ✓</div>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(220px,1fr))",gap:8}}>
+              {[
+                {device:"ThinkPad P53 (daily)",  iface:"WiFi — INFINITUMC241",      dns:"192.168.1.100 ✓", method:"nmcli ignore-auto-dns"},
+                {device:"ThinkPad P53 (daily)",  iface:"USB-C dock — Wired conn 1", dns:"192.168.1.100 ✓", method:"nmcli ignore-auto-dns"},
+                {device:"Windows VM (ID 199)",   iface:"e1000 vmbr1 tag=10",        dns:"10.10.10.3 ✓",   method:"Static IP 10.10.10.50"},
+              ].map((c,i)=>(
+                <div key={i} style={{padding:12,background:P.bg,borderRadius:6,border:`0.5px solid ${P.bdr}`}}>
+                  <div style={{fontSize:12,fontWeight:500,color:P.txt,marginBottom:4}}>{c.device}</div>
+                  <div style={{fontSize:11,color:P.txts,marginBottom:2}}>{c.iface}</div>
+                  <div style={{fontSize:11,color:P.green[1],marginBottom:2}}>{c.dns}</div>
+                  <div style={{fontSize:10,color:P.txts}}>{c.method}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div style={{marginTop:12,padding:16,background:P.bg2,borderRadius:8}}>
             <div style={{fontSize:13,fontWeight:500,color:P.txt,marginBottom:10}}>DNS-over-HTTPS para clientes</div>
             <div style={{fontSize:13,color:P.txts,marginBottom:12}}>Con Traefik como reverse proxy, AdGuard expone DoH accesible dentro del lab sin exponer el puerto 853 directamente:</div>
             <pre style={{fontFamily:"var(--font-mono)",fontSize:12,color:P.txt,lineHeight:1.8,margin:0,background:P.bg,padding:12,borderRadius:6}}>
