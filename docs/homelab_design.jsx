@@ -70,10 +70,10 @@ const MACHINES = [
     upgrades:[], workloads:["pfSense/OPNsense VM","AdGuard Home LXC (DNS/blocker)","Proxmox hypervisor","WireGuard VPN"] },
   { id:"t440p",  name:"Lenovo T440p",           role:"K3s Master Node / CI-CD",         badge:"K3s MASTER",pal:"blue",
     cpu:"Intel Core i7-4712MQ (4C/8T, 2.3–3.3GHz, 4th Gen)", ram:"16GB DDR3L SO-DIMM (2×8GB) — MAXED",
-    storage:"512GB SSD NGFF (WAN) + 1TB HDD (SATA) + 1TB HDD (Ultrabay) + M.2 2242 SATA vacío", net:"Intel Gigabit", gpu:"GTX 730M (sin uso)", os:"Fedora Server 42",
+    storage:"512GB SSD NGFF M.2 2242 (slot WAN — OS) + 1TB HDD (bahía SATA) + 1TB HDD (Ultrabay)", net:"Intel Gigabit", gpu:"GTX 730M (sin uso)", os:"Fedora Server 42",
     roleDetail:"K3s control-plane · GitOps ArgoCD/Flux · CI/CD pipelines",
-    limits:["M.2 slot 2242 SATA — NO soporta NVMe","RAM maxeada 16GB DDR3L (Haswell)","CPU 4th Gen — alto consumo","GTX 730M sin utilidad en modo server"],
-    upgrades:[{text:"Reemplazar HDD Ultrabay por SSD 1TB SATA",priority:"HIGH",cost:"~$40"},{text:"M.2 2242 SATA 256GB dedicado para etcd",priority:"MED",cost:"~$20"}],
+    limits:["Slot M.2 2242 SATA (WAN) ocupado por SSD de OS — sin slot adicional disponible","RAM maxeada 16GB DDR3L (Haswell)","CPU 4th Gen — alto consumo","GTX 730M sin utilidad en modo server"],
+    upgrades:[{text:"Reemplazar HDD Ultrabay por SSD 1TB SATA",priority:"HIGH",cost:"~$40"},{text:"Reemplazar HDD bahía SATA por SSD 1TB SATA",priority:"HIGH",cost:"~$40"}],
     workloads:["K3s control-plane","ArgoCD / Flux","Gitea / Forgejo","Tekton Pipelines","Harbor Registry"] },
   { id:"t430",   name:"Lenovo T430",            role:"K3s Worker Node 1 / Storage",     badge:"WORKER 1",  pal:"purple",
     cpu:"Intel Core i7-3xxx (4C/8T, 3rd Gen Ivy Bridge)", ram:"16GB DDR3 SO-DIMM (2×8GB) — MAXED",
@@ -99,8 +99,8 @@ const MACHINES = [
   { id:"parrot", name:"T440p Parrot OS",        role:"Red Team / Pentesting — AISLADO", badge:"RED TEAM",  pal:"red",
     cpu:"Intel Core i7-4712MQ (4C/8T, 4th Gen)", ram:"16GB DDR3L SO-DIMM (2×8GB) — MAXED",
     storage:"512GB SSD NGFF (OS) + Ultrabay disponible", net:"Intel Gigabit + WiFi adapters", gpu:"NVIDIA GTX (legacy)", os:"Parrot OS Security",
-    roleDetail:"Red team · pentesting · auditorías seguridad del lab — VLAN 50 aislada",
-    limits:["Aislado en VLAN 50 — sin acceso a otras VLANs","NO conectar al cluster K3s"],
+    roleDetail:"Red team · pentesting · auditorías seguridad del lab — VLAN 90 aislada",
+    limits:["Aislado en VLAN 90 (PENTEST) — sin acceso a otras VLANs","NO conectar al cluster K3s bajo ninguna circunstancia"],
     upgrades:[], workloads:["Metasploit","Nmap / Nessus","Burp Suite","Aircrack-ng"] },
   { id:"p53",    name:"Lenovo P53 (Daily)",     role:"Daily Driver / Remote Dev",       badge:"DAILY",     pal:"gray",
     cpu:"Intel Core i9-9880H (8C/16T, 9th Gen Coffee Lake-H)", ram:"64GB DDR4 (4 slots, max 128GB)",
@@ -129,22 +129,25 @@ const WORKER2 = [
 ];
 
 const UPGRADES = [
-  { n:1, title:"Switch managed (reemplazar TL-SG108)", mach:["Infraestructura"], pal:"red",
-    reason:"Sin 802.1Q VLANs es imposible segregar redes. Piedra fundamental del diseño enterprise.", cost:"~$60–100",
-    items:["Switch managed 8–16 puertos 802.1Q (TP-Link TL-SG108E o Netgear GS308E)"] },
-  { n:2, title:"SSDs para nodos K3s (HDDs → SSDs)", mach:["T430","T440p Master"], pal:"red",
+  { n:1, title:"Switch managed ✓ TL-SG108E configurado", mach:["TL-SG108E v6.0"], pal:"teal",
+    reason:"COMPLETADO — TL-SG108E v6.0 instalado con 802.1Q, 6 VLANs configuradas (10/20/30/40/50/90), PVIDs asignados, vmbr1 VLAN-aware activo.", cost:"✓ hecho",
+    items:["IP switch: 10.10.10.2","VLANs: 10 MGMT, 20 PROD, 30 DEV, 40 STORAGE, 50 DMZ, 90 PENTEST","Trunk en puerto 1 (M720q), Parrot aislado en puerto 8 (VLAN 90)"] },
+  { n:2, title:"pfSense ✓ inter-VLAN router configurado", mach:["VM 100 · M720q"], pal:"teal",
+    reason:"COMPLETADO — pfSense CE 2.7.2 con 7 interfaces activas, DHCP por VLAN, reglas de firewall enterprise, PENTEST completamente aislado.", cost:"✓ hecho",
+    items:["WAN: 192.168.1.131 · LAN: 10.10.10.1","Interfaces PROD/DEV/STORAGE/DMZ/PENTEST configuradas","DHCP activo en VLAN 20/30/90","Firewall: PENTEST bloqueado de redes internas"] },
+  { n:3, title:"SSDs para nodos K3s (HDDs → SSDs)", mach:["T430","T440p Master"], pal:"red",
     reason:"etcd requiere latencia <10ms. HDDs mecánicos causan timeouts y corrompen Longhorn.", cost:"~$80–120",
-    items:["2× SSD SATA 1TB para Ultrabays","1× M.2 2242 SATA 256GB para etcd dedicado en T440p"] },
-  { n:3, title:"Definir Worker Node 2 (P52 recomendado)", mach:["P52"], pal:"amber",
+    items:["2× SSD SATA 1TB para Ultrabays","1× SSD SATA 1TB para bahía principal del T440p"] },
+  { n:4, title:"Definir Worker Node 2 (P52 recomendado)", mach:["P52"], pal:"amber",
     reason:"Sin tercer nodo, Longhorn no puede replicar 2× y no hay tolerancia a fallos real.", cost:"$0 (hardware existente)",
     items:["Instalar Fedora Server minimal en P52","Unir como K3s agent","Configurar taints build/prod"] },
-  { n:4, title:"RAM expansión ThinkPad P52", mach:["P52"], pal:"amber",
+  { n:5, title:"RAM expansión ThinkPad P52", mach:["P52"], pal:"amber",
     reason:"32GB no permiten build + ML + K3s agent simultáneamente. 64GB = nodo más potente.", cost:"~$80",
     items:["2× SO-DIMM DDR4-2666 32GB en los 2 slots libres"] },
-  { n:5, title:"NVMe secundario para P52", mach:["P52"], pal:"blue",
+  { n:6, title:"NVMe secundario para P52", mach:["P52"], pal:"blue",
     reason:"Slot M.2 secundario vacío — ideal para Longhorn volumes, imágenes OCI y datasets ML.", cost:"~$60–80",
     items:["1× NVMe M.2 2280 2TB (Samsung 990 EVO o similar)"] },
-  { n:6, title:"UPS para M720q + switch", mach:["M720q","Switch"], pal:"blue",
+  { n:7, title:"UPS para M720q + switch", mach:["M720q","Switch"], pal:"blue",
     reason:"Caída de luz sin UPS corrompe etcd y tumba el cluster sin shutdown graceful.", cost:"~$80–120",
     items:["UPS 650VA con AVR (APC Back-UPS ES 650)"] },
 ];
@@ -155,7 +158,7 @@ export default function App() {
   const P = palette(dark);
   const [tab, setTab] = useState("worker2");
   const [sel, setSel] = useState(null);
-  const tabs=[{id:"worker2",l:"⭐ Worker 2"},{id:"hw",l:"Hardware"},{id:"up",l:"Upgrades"},{id:"net",l:"Red"},{id:"switch",l:"🔀 Switch & VLANs"},{id:"adguard",l:"🛡 AdGuard Home"},{id:"k3s",l:"Cluster K3s"},{id:"git",l:"GitOps"},{id:"iam",l:"IAM"},{id:"stor",l:"Storage"}];
+  const tabs=[{id:"worker2",l:"⭐ Worker 2"},{id:"hw",l:"Hardware"},{id:"up",l:"Upgrades"},{id:"net",l:"Red"},{id:"switch",l:"🔀 Switch & VLANs"},{id:"pfsense",l:"🔥 pfSense"},{id:"adguard",l:"🛡 AdGuard Home"},{id:"k3s",l:"Cluster K3s"},{id:"git",l:"GitOps"},{id:"iam",l:"IAM"},{id:"stor",l:"Storage"}];
   return (
     <div style={{fontFamily:"var(--font-sans)",background:P.bg,minHeight:"100vh"}}>
       <div style={{background:P.bg2,borderBottom:`0.5px solid ${P.bdr}`,padding:"20px 24px 0"}}>
@@ -165,6 +168,7 @@ export default function App() {
           Production-ready · K3s · GitOps · IAM · DevOps · Networking
           <span style={{marginLeft:10,padding:"2px 8px",borderRadius:4,background:P.teal[0],color:P.teal[2],fontSize:11,fontWeight:500}}>Corregido: 2 T440p</span>
           <span style={{marginLeft:6,padding:"2px 8px",borderRadius:4,background:P.green[0],color:P.green[2],fontSize:11,fontWeight:500}}>Switch ✓ VLANs ✓</span>
+          <span style={{marginLeft:6,padding:"2px 8px",borderRadius:4,background:P.teal[0],color:P.teal[2],fontSize:11,fontWeight:500}}>pfSense ✓</span>
         </p>
         <div style={{display:"flex",gap:2,overflowX:"auto"}}>
           {tabs.map(t=>(
@@ -178,6 +182,7 @@ export default function App() {
         {tab==="up"&&<Upgrades P={P}/>}
         {tab==="net"&&<Network P={P}/>}
         {tab==="switch"&&<SwitchVlan P={P}/>}
+        {tab==="pfsense"&&<PfSense P={P}/>}
         {tab==="adguard"&&<AdGuard P={P}/>}
         {tab==="k3s"&&<K3s P={P}/>}
         {tab==="git"&&<GitOps P={P}/>}
@@ -197,7 +202,7 @@ function Worker2({P}) {
     <div>
       <div style={{padding:"14px 18px",background:P.blue[0],border:`0.5px solid ${P.blue[1]}`,borderRadius:12,marginBottom:24}}>
         <div style={{fontSize:13,fontWeight:500,color:P.blue[2],marginBottom:4}}>Contexto corregido</div>
-        <div style={{fontSize:13,color:P.blue[2]}}>El lab tiene <strong>2 T440p</strong>: uno como K3s master (Fedora Server) y uno como pentesting (Parrot OS, VLAN 50 aislada). Cluster actual: <strong>T440p (master) + T430 (worker 1)</strong>. Falta Worker Node 2.</div>
+        <div style={{fontSize:13,color:P.blue[2]}}>El lab tiene <strong>2 T440p</strong>: uno como K3s master (Fedora Server) y uno como pentesting (Parrot OS, <strong>VLAN 90</strong> aislada). Cluster actual: <strong>T440p (master) + T430 (worker 1)</strong>. Falta Worker Node 2.</div>
       </div>
       <div style={{fontSize:15,fontWeight:500,color:P.txt,marginBottom:4}}>¿Qué máquina debe ser Worker Node 2?</div>
       <div style={{fontSize:13,color:P.txts,marginBottom:16}}>Análisis comparativo de las 3 opciones del hardware existente.</div>
@@ -343,7 +348,7 @@ function Upgrades({P}) {
       <div style={{display:"flex",flexDirection:"column",gap:14}}>
         {UPGRADES.map(u=>{
           const cp=P[u.pal];
-          const label=u.pal==="red"?"CRÍTICO":u.pal==="amber"?"ALTO":"MEDIO";
+          const label=u.pal==="teal"?"✓ COMPLETADO":u.pal==="red"?"CRÍTICO":u.pal==="amber"?"ALTO":"MEDIO";
           return (
             <div key={u.n} style={{background:P.bg,border:`0.5px solid ${P.bdr}`,borderRadius:12,padding:20,display:"grid",gridTemplateColumns:"48px 1fr auto",gap:16,alignItems:"start"}}>
               <div style={{textAlign:"center"}}><div style={{fontSize:22,fontWeight:500,color:P.txt}}>#{u.n}</div><div style={{fontSize:11,color:P.txts}}>prioridad</div></div>
@@ -375,11 +380,11 @@ function Network({P}) {
   const aid="aN2";
   const AH=`url(#${aid})`;
   const vlans=[
-    {l:"VLAN 10 MGMT",s:"192.168.10.0/24",x:14, pal:"teal"},
-    {l:"VLAN 20 PROD",s:"192.168.20.0/24",x:144,pal:"blue"},
-    {l:"VLAN 30 DEV", s:"192.168.30.0/24",x:274,pal:"purple"},
-    {l:"VLAN 40 STOR",s:"192.168.40.0/24",x:404,pal:"amber"},
-    {l:"VLAN 50 PEN", s:"192.168.50.0/24",x:534,pal:"red"},
+    {l:"VLAN 10 MGMT", s:"10.10.10.0/24", x:14,  pal:"teal"},
+    {l:"VLAN 20 PROD", s:"10.10.20.0/24", x:144, pal:"blue"},
+    {l:"VLAN 30 DEV",  s:"10.10.30.0/24", x:274, pal:"purple"},
+    {l:"VLAN 40 STOR", s:"10.10.40.0/24", x:404, pal:"amber"},
+    {l:"VLAN 90 PEN",  s:"10.10.90.0/24", x:534, pal:"red"},
   ];
   const hosts=[
     {l:"M720q · Dell",    cx:74, pal:"teal"},
@@ -401,7 +406,7 @@ function Network({P}) {
         <Ln x1={330} y1={52} x2={330} y2={76} col={P.line} arr={aid}/>
         {/* AdGuard LXC — destacado como componente propio */}
         <Nd x={186} y={150} w={180} h={48} rx={8} p={P.green} t="AdGuard Home LXC" s="DNS blocker · DoH upstream"/>
-        <Nd x={374} y={150} w={160} h={48} rx={8} p={P.gray}  t="Switch Managed" s="802.1Q (upgrade)"/>
+        <Nd x={374} y={150} w={160} h={48} rx={8} p={P.blue} t="TL-SG108E" s="802.1Q · 10.10.10.2 · ✓"/>
         <Ln x1={330} y1={128} x2={276} y2={150} col={P.line} arr={aid}/>
         <Ln x1={330} y1={128} x2={454} y2={150} col={P.line} arr={aid}/>
         {/* DNS flow from AdGuard */}
@@ -710,6 +715,309 @@ function SwitchVlan({P}) {
   );
 }
 
+// ── pfSense ─────────────────────────────────────────────────────────────────────
+function PfSense({P}) {
+  const [activeTab, setActiveTab] = useState("overview");
+  const subTabs=[{id:"overview",l:"Overview"},{id:"interfaces",l:"Interfaces"},{id:"dhcp",l:"DHCP"},{id:"firewall",l:"Firewall Rules"},{id:"routing",l:"Routing Diagram"}];
+
+  const interfaces=[
+    {name:"WAN",      iface:"vtnet0",    vlan:"—",  ip:"192.168.1.131", mask:"/24", role:"ISP uplink",       pal:"gray",   status:"UP"},
+    {name:"LAN",      iface:"vtnet1",    vlan:"10", ip:"10.10.10.1",    mask:"/24", role:"MGMT gateway",     pal:"teal",   status:"UP"},
+    {name:"PROD",     iface:"vtnet1.20", vlan:"20", ip:"10.10.20.1",    mask:"/24", role:"K3s cluster",      pal:"blue",   status:"UP"},
+    {name:"DEV",      iface:"vtnet1.30", vlan:"30", ip:"10.10.30.1",    mask:"/24", role:"Development",      pal:"purple", status:"UP"},
+    {name:"STORAGE",  iface:"vtnet1.40", vlan:"40", ip:"10.10.40.1",    mask:"/24", role:"Longhorn traffic",  pal:"amber",  status:"UP"},
+    {name:"DMZ",      iface:"vtnet1.50", vlan:"50", ip:"10.10.50.1",    mask:"/24", role:"Ingress services",  pal:"green",  status:"UP"},
+    {name:"PENTEST",  iface:"vtnet1.90", vlan:"90", ip:"10.10.90.1",    mask:"/24", role:"Red team isolated", pal:"red",    status:"UP"},
+  ];
+
+  const dhcpPools=[
+    {vlan:"VLAN 20 PROD",    from:"10.10.20.100", to:"10.10.20.200", dns:"10.10.10.3", domain:"lab.internal", pal:"blue"},
+    {vlan:"VLAN 30 DEV",     from:"10.10.30.100", to:"10.10.30.200", dns:"10.10.10.3", domain:"lab.internal", pal:"purple"},
+    {vlan:"VLAN 90 PENTEST", from:"10.10.90.100", to:"10.10.90.150", dns:"10.10.90.1", domain:"—",            pal:"red"},
+  ];
+
+  const fwRules=[
+    {iface:"LAN",     action:"pass",  src:"LAN subnets",     dst:"any",             desc:"Default allow LAN to any",              pal:"teal"},
+    {iface:"PROD",    action:"pass",  src:"PROD subnets",    dst:"any",             desc:"Allow PROD to internet",                pal:"blue"},
+    {iface:"PROD",    action:"pass",  src:"PROD subnets",    dst:"STORAGE subnets", desc:"Allow PROD to STORAGE (Longhorn)",      pal:"blue"},
+    {iface:"DEV",     action:"pass",  src:"DEV subnets",     dst:"any",             desc:"Allow DEV to internet",                 pal:"purple"},
+    {iface:"DEV",     action:"pass",  src:"DEV subnets",     dst:"PROD subnets",    desc:"Allow DEV to PROD (K3s deploy)",        pal:"purple"},
+    {iface:"STORAGE", action:"pass",  src:"STORAGE subnets", dst:"STORAGE subnets", desc:"Allow STORAGE intra-VLAN (Longhorn)",   pal:"amber"},
+    {iface:"PENTEST", action:"block", src:"PENTEST subnets", dst:"10.10.0.0/8",     desc:"Block PENTEST to all internal",         pal:"red"},
+    {iface:"PENTEST", action:"pass",  src:"PENTEST subnets", dst:"any",             desc:"Allow PENTEST to internet",             pal:"red"},
+  ];
+
+  return (
+    <div>
+      {/* Header */}
+      <div style={{padding:"16px 20px",background:P.teal[0],border:`0.5px solid ${P.teal[1]}`,borderRadius:12,marginBottom:20}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
+          <div>
+            <div style={{fontSize:15,fontWeight:500,color:P.teal[2],marginBottom:4}}>🔥 pfSense CE 2.7.2</div>
+            <div style={{fontSize:13,color:P.teal[2]}}>VM 100 · 2 vCPU · 2GB RAM · 32GB disk · FreeBSD 14 · WAN: 192.168.1.131 · LAN: 10.10.10.1</div>
+          </div>
+          <div style={{textAlign:"right"}}>
+            <div style={{fontSize:11,fontWeight:500,padding:"3px 8px",borderRadius:4,background:P.bg,color:P.green[1],marginBottom:4}}>✓ CONFIGURADO</div>
+            <div style={{fontSize:11,color:P.teal[2]}}>7 interfaces · 6 VLANs · Firewall active</div>
+          </div>
+        </div>
+      </div>
+
+      {/* Sub-tabs */}
+      <div style={{display:"flex",gap:4,marginBottom:20,borderBottom:`0.5px solid ${P.bdr}`}}>
+        {subTabs.map(s=>(
+          <button key={s.id} onClick={()=>setActiveTab(s.id)} style={{padding:"7px 14px",fontSize:13,border:"none",cursor:"pointer",borderRadius:"6px 6px 0 0",background:activeTab===s.id?P.bg:"transparent",color:activeTab===s.id?P.txt:P.txts,fontWeight:activeTab===s.id?500:400,borderBottom:activeTab===s.id?`2px solid ${P.teal[1]}`:"2px solid transparent"}}>{s.l}</button>
+        ))}
+      </div>
+
+      {activeTab==="overview" && (
+        <div>
+          <svg width="100%" viewBox="0 0 660 440" role="img">
+            <title>pfSense architecture overview</title>
+            <defs><marker id="aPF" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke={P.line} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></marker></defs>
+            {/* ISP */}
+            <Nd x={260} y={10} w={140} h={34} p={P.gray} t="Internet / ISP"/>
+            {/* Proxmox box */}
+            <rect x={60} y={60} width={540} height={130} rx={10} fill={P.bg2} stroke={P.bdr} strokeWidth="1" strokeDasharray="5 3"/>
+            <text x={80} y={78} fontSize="11" fontWeight="500" fill={P.txts}>Proxmox VE — M720q · VM 100</text>
+            {/* pfSense VM */}
+            <rect x={80} y={86} width={500} height={92} rx={8} fill={P.teal[0]} stroke={P.teal[1]} strokeWidth="1"/>
+            <text x={330} y={110} textAnchor="middle" fontSize="13" fontWeight="500" fill={P.teal[2]}>pfSense CE 2.7.2</text>
+            <text x={330} y={128} textAnchor="middle" fontSize="10" fill={P.teal[2]}>2 vCPU · 2GB RAM · FreeBSD 14 · domain: lab.internal</text>
+            {/* vtnet0 WAN */}
+            <rect x={100} y={142} width={140} height={28} rx={4} fill={P.gray[0]} stroke={P.gray[1]} strokeWidth="0.5"/>
+            <text x={170} y={156} textAnchor="middle" dominantBaseline="central" fontSize="10" fill={P.gray[2]}>vtnet0 WAN · 192.168.1.131</text>
+            {/* vtnet1 LAN */}
+            <rect x={420} y={142} width={140} height={28} rx={4} fill={P.blue[0]} stroke={P.blue[1]} strokeWidth="0.5"/>
+            <text x={490} y={156} textAnchor="middle" dominantBaseline="central" fontSize="10" fill={P.blue[2]}>vtnet1 LAN trunk · 10.10.10.1</text>
+            <line x1={330} y1={44} x2={170} y2={86} stroke={P.line} strokeWidth="1" markerEnd="url(#aPF)"/>
+            <line x1={330} y1={44} x2={490} y2={86} stroke={P.line} strokeWidth="1" markerEnd="url(#aPF)"/>
+            {/* VLAN sub-interfaces */}
+            {[
+              {l:"vtnet1.20\nPROD · 10.10.20.1",  x:60,  pal:P.blue},
+              {l:"vtnet1.30\nDEV · 10.10.30.1",   x:180, pal:P.purple},
+              {l:"vtnet1.40\nSTOR · 10.10.40.1",  x:300, pal:P.amber},
+              {l:"vtnet1.50\nDMZ · 10.10.50.1",   x:420, pal:P.green},
+              {l:"vtnet1.90\nPEN · 10.10.90.1",   x:540, pal:P.red},
+            ].map(n=>(
+              <g key={n.l}>
+                <rect x={n.x} y={214} width={110} height={44} rx={6} fill={n.pal[0]} stroke={n.pal[1]} strokeWidth="0.5"/>
+                {n.l.split("\n").map((line,i)=>(
+                  <text key={i} x={n.x+55} y={230+i*14} textAnchor="middle" dominantBaseline="central" fontSize="9" fontWeight={i===0?"500":"400"} fill={n.pal[2]}>{line}</text>
+                ))}
+                <line x1={490} y1={196} x2={n.x+55} y2={214} stroke={n.pal[1]} strokeWidth="0.7" strokeDasharray="3 2" markerEnd="url(#aPF)"/>
+              </g>
+            ))}
+            {/* Switch */}
+            <Nd x={190} y={282} w={280} h={38} rx={8} p={P.blue} t="TL-SG108E · 10.10.10.2" s="802.1Q trunk ← port 1"/>
+            <line x1={330} y1={258} x2={330} y2={282} stroke={P.line} strokeWidth="1.2" markerEnd="url(#aPF)"/>
+            {/* End nodes */}
+            {[
+              {l:"T440p\nP2·V20",   x:110, pal:P.blue},
+              {l:"T430\nP3·V20",    x:230, pal:P.blue},
+              {l:"libre\nP4-7",     x:350, pal:P.gray},
+              {l:"Parrot\nP8·V90",  x:470, pal:P.red},
+            ].map(n=>(
+              <g key={n.l}>
+                <rect x={n.x-44} y={348} width={90} height={42} rx={6} fill={n.pal[0]} stroke={n.pal[1]} strokeWidth="0.5"/>
+                {n.l.split("\n").map((line,i)=>(
+                  <text key={i} x={n.x} y={363+i*14} textAnchor="middle" dominantBaseline="central" fontSize="10" fontWeight={i===0?"500":"400"} fill={n.pal[2]}>{line}</text>
+                ))}
+                <line x1={n.x} y1={320} x2={n.x} y2={348} stroke={n.pal[1]} strokeWidth="0.7" markerEnd="url(#aPF)"/>
+              </g>
+            ))}
+          </svg>
+          <div style={{marginTop:16,padding:16,background:P.bg2,borderRadius:8}}>
+            <div style={{fontSize:13,fontWeight:500,color:P.txt,marginBottom:10}}>Estado actual del lab</div>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(200px,1fr))",gap:8}}>
+              {[
+                ["pfSense version","CE 2.7.2-RELEASE (amd64)"],
+                ["WAN IP","192.168.1.131 (DHCP)"],
+                ["LAN IP","10.10.10.1/24 (MGMT)"],
+                ["Interfaces activas","7 (WAN + LAN + 5 VLAN)"],
+                ["DHCP activo","VLAN 20, 30, 90"],
+                ["Firewall rules","8 reglas configuradas"],
+                ["NAT","Auto outbound masquerade"],
+                ["RAM asignada","2GB (optimizado de 4.5GB)"],
+                ["Domain","lab.internal"],
+                ["DNS primario","10.10.10.3 (AdGuard)"],
+              ].map(([k,v])=>(
+                <div key={k} style={{fontSize:12}}>
+                  <span style={{color:P.txts}}>{k}: </span>
+                  <span style={{color:P.txt,fontWeight:500}}>{v}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {activeTab==="interfaces" && (
+        <div>
+          <p style={{fontSize:14,color:P.txts,margin:"0 0 16px"}}>7 interfaces activas. vtnet1 actúa como trunk 802.1Q hacia el switch. Las sub-interfaces VLAN son ruteadas por pfSense.</p>
+          <div style={{overflowX:"auto"}}>
+            <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
+              <thead>
+                <tr style={{background:P.bg2}}>
+                  {["Interface","pfSense Name","VLAN","IP Address","Subnet","Role","Status"].map(h=>(
+                    <th key={h} style={{padding:"10px 12px",textAlign:"left",color:P.txts,fontWeight:500,borderBottom:`1px solid ${P.bdr}`}}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {interfaces.map(i=>{
+                  const cp=P[i.pal];
+                  return (
+                    <tr key={i.name} style={{borderBottom:`0.5px solid ${P.bdr}`}}>
+                      <td style={{padding:"10px 12px"}}>
+                        <span style={{fontWeight:600,padding:"2px 8px",borderRadius:4,background:cp[0],color:cp[2]}}>{i.name}</span>
+                      </td>
+                      <td style={{padding:"10px 12px",fontFamily:"var(--font-mono)",fontSize:11,color:P.txts}}>{i.iface}</td>
+                      <td style={{padding:"10px 12px",color:P.txt}}>{i.vlan}</td>
+                      <td style={{padding:"10px 12px",fontFamily:"var(--font-mono)",fontSize:12,color:P.txt,fontWeight:500}}>{i.ip}</td>
+                      <td style={{padding:"10px 12px",color:P.txts}}>{i.mask}</td>
+                      <td style={{padding:"10px 12px",color:P.txt}}>{i.role}</td>
+                      <td style={{padding:"10px 12px"}}><span style={{color:P.green[1],fontWeight:500}}>↑ {i.status}</span></td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          <div style={{marginTop:16,padding:14,background:P.blue[0],border:`0.5px solid ${P.blue[1]}`,borderRadius:8,fontSize:13,color:P.blue[2]}}>
+            <strong>Nota VLAN 10:</strong> La interfaz LAN (vtnet1) <em>es</em> VLAN 10. No se crea como sub-interfaz — el trunk físico actúa directamente como gateway `10.10.10.1` para VLAN 10 MGMT.
+          </div>
+        </div>
+      )}
+
+      {activeTab==="dhcp" && (
+        <div>
+          <p style={{fontSize:14,color:P.txts,margin:"0 0 16px"}}>DHCP activo en VLANs con clientes dinámicos. STORAGE y DMZ usan IPs estáticas.</p>
+          <div style={{display:"flex",flexDirection:"column",gap:12,marginBottom:20}}>
+            {dhcpPools.map(d=>{
+              const cp=P[d.pal];
+              return (
+                <div key={d.vlan} style={{padding:16,background:P.bg,border:`0.5px solid ${P.bdr}`,borderRadius:8}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+                    <span style={{fontSize:14,fontWeight:500,padding:"3px 10px",borderRadius:4,background:cp[0],color:cp[2]}}>{d.vlan}</span>
+                    <span style={{fontSize:11,color:P.txts,fontFamily:"var(--font-mono)"}}>{d.from} – {d.to}</span>
+                  </div>
+                  <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8,fontSize:12}}>
+                    {[["Pool From",d.from],["Pool To",d.to],["DNS Server",d.dns],["Domain",d.domain]].map(([k,v])=>(
+                      <div key={k}>
+                        <div style={{color:P.txts,marginBottom:2}}>{k}</div>
+                        <div style={{color:P.txt,fontFamily:"var(--font-mono)",fontWeight:500}}>{v}</div>
+                      </div>
+                    ))}
+                  </div>
+                  {d.pal==="red"&&(
+                    <div style={{marginTop:10,padding:"6px 10px",background:P.red[0],borderRadius:4,fontSize:11,color:P.red[2]}}>
+                      ⚠ DNS apunta a 10.10.90.1 (pfSense local) — NO a AdGuard. Previene visibilidad de servicios internos lab.internal desde PENTEST.
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+          <div style={{padding:14,background:P.bg2,borderRadius:8,fontSize:13}}>
+            <div style={{fontWeight:500,color:P.txt,marginBottom:8}}>VLANs sin DHCP — IPs estáticas</div>
+            {[
+              ["VLAN 10 MGMT","Proxmox (192.168.1.65→10.10.10.x), switch (10.10.10.2), AdGuard (10.10.10.3)"],
+              ["VLAN 40 STORAGE","K3s nodes con IPs estáticas asignadas por Longhorn/MetalLB"],
+              ["VLAN 50 DMZ","Traefik Ingress con IP estática vía K3s MetalLB"],
+            ].map(([v,d])=>(
+              <div key={v} style={{display:"flex",gap:8,marginBottom:6,fontSize:12}}>
+                <span style={{color:P.txt,fontWeight:500,minWidth:120,flexShrink:0}}>{v}</span>
+                <span style={{color:P.txts}}>{d}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {activeTab==="firewall" && (
+        <div>
+          <p style={{fontSize:14,color:P.txts,margin:"0 0 16px"}}>Política: <strong style={{color:P.txt}}>Default DENY</strong> — solo tráfico explícitamente permitido pasa. Reglas evaluadas top-to-bottom por interfaz.</p>
+          <div style={{overflowX:"auto"}}>
+            <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
+              <thead>
+                <tr style={{background:P.bg2}}>
+                  {["Interface","Action","Source","Destination","Description"].map(h=>(
+                    <th key={h} style={{padding:"10px 12px",textAlign:"left",color:P.txts,fontWeight:500,borderBottom:`1px solid ${P.bdr}`}}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {fwRules.map((r,i)=>{
+                  const cp=P[r.pal];
+                  const isBlock=r.action==="block";
+                  return (
+                    <tr key={i} style={{borderBottom:`0.5px solid ${P.bdr}`,background:isBlock?P.red[0]:"transparent"}}>
+                      <td style={{padding:"9px 12px"}}>
+                        <span style={{fontSize:11,fontWeight:500,padding:"2px 7px",borderRadius:3,background:cp[0],color:cp[2]}}>{r.iface}</span>
+                      </td>
+                      <td style={{padding:"9px 12px"}}>
+                        <span style={{fontSize:11,fontWeight:600,color:isBlock?P.red[1]:P.green[1]}}>{isBlock?"✗ BLOCK":"✓ PASS"}</span>
+                      </td>
+                      <td style={{padding:"9px 12px",fontFamily:"var(--font-mono)",fontSize:11,color:P.txt}}>{r.src}</td>
+                      <td style={{padding:"9px 12px",fontFamily:"var(--font-mono)",fontSize:11,color:P.txt}}>{r.dst}</td>
+                      <td style={{padding:"9px 12px",color:P.txts}}>{r.desc}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          <div style={{marginTop:16,padding:14,background:P.red[0],border:`0.5px solid ${P.red[1]}`,borderRadius:8,fontSize:13,color:P.red[2]}}>
+            <strong>PENTEST isolation:</strong> La regla BLOCK de PENTEST→10.10.0.0/8 debe estar ANTES de la regla PASS. pfSense evalúa top-to-bottom y se detiene en el primer match. El orden es crítico.
+          </div>
+          <div style={{marginTop:12,padding:14,background:P.amber[0],border:`0.5px solid ${P.amber[1]}`,borderRadius:8,fontSize:13,color:P.amber[2]}}>
+            <strong>DMZ pendiente:</strong> Las reglas de DMZ se configurarán cuando Traefik Ingress esté desplegado en K3s. Permitirá HTTPS entrante del WAN hacia K3s services.
+          </div>
+        </div>
+      )}
+
+      {activeTab==="routing" && (
+        <div>
+          <p style={{fontSize:14,color:P.txts,margin:"0 0 16px"}}>Diagrama de routing inter-VLAN. pfSense como router central con política de acceso enterprise.</p>
+          <svg width="100%" viewBox="0 0 660 460" role="img">
+            <title>pfSense inter-VLAN routing diagram</title>
+            <defs><marker id="aPFR" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke={P.line} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></marker></defs>
+            {/* Internet */}
+            <Nd x={260} y={10} w={140} h={34} p={P.gray} t="Internet"/>
+            {/* pfSense center */}
+            <rect x={210} y={68} width={240} height={60} rx={10} fill={P.teal[0]} stroke={P.teal[1]} strokeWidth="1.5"/>
+            <text x={330} y={92} textAnchor="middle" fontSize="13" fontWeight="500" fill={P.teal[2]}>pfSense Firewall</text>
+            <text x={330} y={110} textAnchor="middle" fontSize="10" fill={P.teal[2]}>NAT · Routing · Firewall Rules</text>
+            <line x1={330} y1={44} x2={330} y2={68} stroke={P.line} strokeWidth="1.2" markerEnd="url(#aPFR)"/>
+            {/* VLANs around pfSense */}
+            {[
+              {l:"MGMT\n10.10.10.0/24",    x:50,  y:180, pal:P.teal,   allow:"→ any",              color:"teal"},
+              {l:"PROD\n10.10.20.0/24",    x:50,  y:270, pal:P.blue,   allow:"→ internet\n→ STOR", color:"blue"},
+              {l:"DEV\n10.10.30.0/24",     x:50,  y:360, pal:P.purple, allow:"→ internet\n→ PROD", color:"purple"},
+              {l:"STORAGE\n10.10.40.0/24", x:500, y:180, pal:P.amber,  allow:"→ self only",         color:"amber"},
+              {l:"DMZ\n10.10.50.0/24",     x:500, y:270, pal:P.green,  allow:"pending",             color:"green"},
+              {l:"PENTEST\n10.10.90.0/24", x:500, y:360, pal:P.red,    allow:"✗ internal\n→ internet", color:"red"},
+            ].map(n=>(
+              <g key={n.l}>
+                <rect x={n.x} y={n.y} width={140} height={52} rx={8} fill={n.pal[0]} stroke={n.pal[1]} strokeWidth="0.5"/>
+                {n.l.split("\n").map((line,i)=>(
+                  <text key={i} x={n.x+70} y={n.y+18+i*16} textAnchor="middle" dominantBaseline="central" fontSize="11" fontWeight={i===0?"500":"400"} fill={n.pal[2]}>{line}</text>
+                ))}
+                <text x={n.x+70} y={n.y+52+10} textAnchor="middle" fontSize="9" fill={n.pal[1]}>{n.allow.split("\n")[0]}</text>
+                {n.allow.split("\n")[1]&&<text x={n.x+70} y={n.y+52+22} textAnchor="middle" fontSize="9" fill={n.pal[1]}>{n.allow.split("\n")[1]}</text>}
+                <line x1={n.x>300?n.x:n.x+140} y1={n.y+26} x2={n.x>300?450:210} y2={98+Math.min(n.y-180,60)} stroke={n.pal[1]} strokeWidth="0.8" strokeDasharray="4 3" markerEnd="url(#aPFR)"/>
+              </g>
+            ))}
+            {/* Legend */}
+            <text x={330} y={430} textAnchor="middle" fontSize="11" fill={P.txts}>Default DENY between VLANs unless explicitly allowed · NAT masquerade on WAN for all internal subnets</text>
+          </svg>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── AdGuard Home ────────────────────────────────────────────────────────────────
 function AdGuard({P}) {
   const [activeSection, setActiveSection] = useState("arch");
@@ -781,20 +1089,20 @@ function AdGuard({P}) {
             <text x={640} y={260} textAnchor="end" fontSize="10" fill={P.txts}>Proxmox VE</text>
           </svg>
 
-          {/* LXC creation commands */}
           <div style={{marginTop:20,padding:"14px 18px",background:P.bg2,border:`0.5px solid ${P.bdr}`,borderRadius:8}}>
-            <div style={{fontSize:13,fontWeight:500,color:P.txt,marginBottom:10}}>Creación del contenedor LXC en Proxmox</div>
+            <div style={{fontSize:13,fontWeight:500,color:P.txt,marginBottom:10}}>Creación del contenedor LXC (configuración real usada)</div>
             <pre style={{fontFamily:"var(--font-mono)",fontSize:12,color:P.txts,lineHeight:2,margin:0,whiteSpace:"pre-wrap"}}>
-              <span style={{color:P.txts}}>{`# Desde la shell de Proxmox (pve shell)\n`}</span>
-              <span style={{color:P.green[2]||P.txt}}>{`pct create 100 local:vztmpl/debian-12-standard_12.2-1_amd64.tar.zst \\\n`}</span>
+              <span style={{color:P.txts}}>{`# Template Alpine 3.22 (no Debian) — más ligero y seguro\n`}</span>
+              <span style={{color:P.txts}}>{`# Sin tag VLAN por ahora — switch unmanaged en el momento de la instalación\n`}</span>
+              <span style={{color:P.green[2]||P.txt}}>{`pct create 101 local:vztmpl/alpine-3.22-default_20250617_amd64.tar.xz \\\n`}</span>
               <span style={{color:P.green[2]||P.txt}}>{`  --hostname adguard-home \\\n`}</span>
-              <span style={{color:P.green[2]||P.txt}}>{`  --cores 1 --memory 512 --swap 256 \\\n`}</span>
-              <span style={{color:P.green[2]||P.txt}}>{`  --rootfs local-lvm:8 \\\n`}</span>
-              <span style={{color:P.green[2]||P.txt}}>{`  --net0 name=eth0,bridge=vmbr0,tag=10,ip=192.168.10.2/24,gw=192.168.10.1 \\\n`}</span>
+              <span style={{color:P.green[2]||P.txt}}>{`  --cores 1 --memory 256 --swap 128 \\\n`}</span>
+              <span style={{color:P.green[2]||P.txt}}>{`  --rootfs local-lvm:512 \\\n`}</span>
+              <span style={{color:P.green[2]||P.txt}}>{`  --net0 name=eth0,bridge=vmbr0,ip=192.168.1.100/24,gw=192.168.1.254 \\\n`}</span>
               <span style={{color:P.green[2]||P.txt}}>{`  --unprivileged 1 --features nesting=1 \\\n`}</span>
               <span style={{color:P.green[2]||P.txt}}>{`  --start 1 --onboot 1\n\n`}</span>
-              <span style={{color:P.txts}}>{`# Dentro del LXC — instalar AdGuard Home\n`}</span>
-              <span style={{color:P.txt}}>{`curl -s -S -L https://raw.githubusercontent.com/AdguardTeam/AdGuardHome/master/scripts/install.sh | sh -s -- -v`}</span>
+              <span style={{color:P.txts}}>{`# Migración post-pfSense → VLAN 10 (10.10.10.3)\n`}</span>
+              <span style={{color:P.txt}}>{`pct stop 101\npct set 101 --net0 name=eth0,bridge=vmbr1,tag=10,ip=10.10.10.3/24,gw=10.10.10.1\npct start 101`}</span>
             </pre>
           </div>
         </div>
@@ -840,11 +1148,12 @@ function AdGuard({P}) {
               <div style={{fontSize:13,fontWeight:500,color:P.txt,marginBottom:12}}>Split-horizon DNS</div>
               <div style={{fontSize:12,color:P.txts,marginBottom:10}}>Zonas internas resueltas localmente, sin salir a internet:</div>
               {[
-                {zone:"*.lab.internal",       res:"192.168.20.x (K3s MetalLB)"},
-                {zone:"*.cluster.local",      res:"CoreDNS del cluster K3s"},
-                {zone:"proxmox.mgmt",         res:"192.168.10.1"},
-                {zone:"adguard.mgmt",         res:"192.168.10.2"},
-                {zone:"pfsense.mgmt",         res:"192.168.10.254"},
+                {zone:"*.lab.internal",  res:"10.10.20.x (K3s MetalLB)"},
+                {zone:"*.cluster.local", res:"CoreDNS del cluster K3s"},
+                {zone:"proxmox.mgmt",    res:"192.168.1.65 (temp) → 10.10.10.65"},
+                {zone:"adguard.mgmt",    res:"192.168.1.100 (temp) → 10.10.10.3"},
+                {zone:"switch.mgmt",     res:"10.10.10.2"},
+                {zone:"pfsense.mgmt",    res:"10.10.10.1 (post-pfSense)"},
               ].map(z=>(
                 <div key={z.zone} style={{display:"flex",gap:8,marginBottom:7,alignItems:"baseline"}}>
                   <span style={{fontSize:11,fontFamily:"var(--font-mono)",color:P.blue[2]||P.txt,minWidth:160,flexShrink:0}}>{z.zone}</span>
@@ -857,9 +1166,9 @@ function AdGuard({P}) {
               <div style={{fontSize:13,fontWeight:500,color:P.txt,marginBottom:12}}>Integración pfSense</div>
               {[
                 {setting:"DNS Resolver (Unbound)",    action:"Deshabilitar — AdGuard toma ese rol"},
-                {setting:"DNS Forwarder",             action:"Habilitar → forward a 192.168.10.2"},
-                {setting:"DHCP Server (todas VLANs)", action:"DNS option = 192.168.10.2"},
-                {setting:"Firewall rule",             action:"Bloquear DNS (53/853) excepto desde LXC"},
+                {setting:"DNS Forwarder",             action:"Habilitar → forward a 10.10.10.3"},
+                {setting:"DHCP Server (todas VLANs)", action:"DNS option = 10.10.10.3"},
+                {setting:"Firewall rule",             action:"Bloquear DNS (53/853) excepto desde 10.10.10.3"},
                 {setting:"DoT pfSense propio",        action:"Opcional — usar AdGuard como único resolver"},
               ].map(s=>(
                 <div key={s.setting} style={{marginBottom:8}}>
@@ -881,7 +1190,7 @@ function AdGuard({P}) {
             {/* AdGuard center */}
             <rect x={240} y={130} width={180} height={60} rx={10} fill={P.green[0]} stroke={P.green[1]} strokeWidth="1.5"/>
             <text x={330} y={154} textAnchor="middle" dominantBaseline="central" fontSize="13" fontWeight="500" fill={P.green[2]}>AdGuard Home</text>
-            <text x={330} y={172} textAnchor="middle" dominantBaseline="central" fontSize="10" fill={P.green[2]}>192.168.10.2 · LXC</text>
+            <text x={330} y={172} textAnchor="middle" dominantBaseline="central" fontSize="10" fill={P.green[2]}>192.168.1.100 → 10.10.10.3 · LXC</text>
             {/* Satellites */}
             {[
               {t:"pfSense",         s:"DNS forwarder",         x:30,  y:130, col:P.teal,   lx1:240,ly1:160,lx2:170,ly2:160},
@@ -935,7 +1244,7 @@ function AdGuard({P}) {
               <div style={{fontSize:13,fontWeight:500,color:P.txt,marginBottom:12}}>Stack de monitoring</div>
               <div style={{fontSize:13,color:P.txts,marginBottom:12}}>El exporter corre como segundo contenedor o proceso dentro del LXC:</div>
               <pre style={{fontFamily:"var(--font-mono)",fontSize:11,color:P.txt,lineHeight:1.8,background:P.bg,padding:12,borderRadius:6,margin:0}}>
-                {`# adguard-exporter (dentro del LXC)\ndocker run -d \\\n  -p 9617:9617 \\\n  -e ADGUARD_HOSTNAME=localhost \\\n  -e ADGUARD_PORT=3000 \\\n  -e ADGUARD_USERNAME=admin \\\n  -e ADGUARD_PASSWORD=\${SECRET} \\\n  ebrianne/adguard-exporter\n\n# prometheus.yml scrape config\n- job_name: adguard\n  static_configs:\n  - targets: ['192.168.10.2:9617']`}
+                {`# adguard-exporter (dentro del LXC)\ndocker run -d \\\n  -p 9617:9617 \\\n  -e ADGUARD_HOSTNAME=localhost \\\n  -e ADGUARD_PORT=3000 \\\n  -e ADGUARD_USERNAME=admin \\\n  -e ADGUARD_PASSWORD=\${SECRET} \\\n  ebrianne/adguard-exporter\n\n# prometheus.yml scrape config\n- job_name: adguard\n  static_configs:\n  - targets: ['10.10.10.3:9617']`}
               </pre>
             </div>
           </div>
@@ -972,7 +1281,7 @@ function K3s({P}) {
   const aid="aK2"; const AH=`url(#${aid})`;
   return (
     <div>
-      <p style={{fontSize:14,color:P.txts,margin:"0 0 20px"}}>Cluster K3s: T440p (master) + T430 (worker 1) + P52 (worker 2). T440p Parrot OS aislado en VLAN 50.</p>
+      <p style={{fontSize:14,color:P.txts,margin:"0 0 20px"}}>Cluster K3s: T440p (master) + T430 (worker 1) + P52 (worker 2). T440p Parrot OS aislado en VLAN 90.</p>
       <div style={{padding:"10px 16px",background:P.amber[0],border:`0.5px solid ${P.amber[1]}`,borderRadius:8,marginBottom:20,fontSize:13,color:P.amber[2]}}>
         Ver pestaña "⭐ Worker 2" para análisis completo del P52 como tercer nodo.
       </div>
@@ -1002,13 +1311,13 @@ function K3s({P}) {
         ))}
         <g><rect x={10} y={344} width={160} height={48} rx={8} fill={P.red[0]} stroke={P.red[1]} strokeWidth="0.5" strokeDasharray="5 3"/>
           <text x={90} y={362} textAnchor="middle" dominantBaseline="central" fontSize="11" fontWeight="500" fill={P.red[2]}>T440p Parrot OS</text>
-          <text x={90} y={380} textAnchor="middle" dominantBaseline="central" fontSize="10" fill={P.red[2]}>VLAN 50 · NO cluster</text>
+          <text x={90} y={380} textAnchor="middle" dominantBaseline="central" fontSize="10" fill={P.red[2]}>VLAN 90 · NO cluster</text>
         </g>
         <Nd x={190} y={344} w={280} h={40} rx={10} p={P.teal}  t="Traefik Ingress · MetalLB · CoreDNS"/>
         <Ln x1={330} y1={248} x2={330} y2={344} col={P.line} dash="3 3" arr={aid}/>
         <Nd x={190} y={406} w={280} h={40} rx={10} p={P.green} t="Longhorn CSI · Persistent Volumes"/>
         <Ln x1={330} y1={384} x2={330} y2={406} col={P.line} arr={aid}/>
-        <Nd x={190} y={464} w={280} h={36} rx={10} p={P.gray}  t="VLAN 20 PROD · 192.168.20.0/24"/>
+        <Nd x={190} y={464} w={280} h={36} rx={10} p={P.gray}  t="VLAN 20 PROD · 10.10.20.0/24"/>
         <Ln x1={330} y1={446} x2={330} y2={464} col={P.line} arr={aid}/>
       </svg>
       <div style={{marginTop:20,padding:16,background:P.bg2,borderRadius:8}}>
@@ -1047,7 +1356,7 @@ function GitOps({P}) {
         <Nd x={358} y={134} w={130} h={68} p={P.blue} t="ArgoCD" s="Pull GitOps · Sync"/>
         <Ln x1={296} y1={168} x2={358} y2={168} col={P.line} arr={aid}/>
         <text x={327} y={160} textAnchor="middle" fontSize="10" fill={P.txts}>watches</text>
-        <Nd x={176} y={264} w={370} h={72} rx={10} p={P.green} t="K3s Cluster · VLAN 20 PROD" s="T440p (master) · T430 (worker1) · P52 (worker2)"/>
+        <Nd x={176} y={264} w={370} h={72} rx={10} p={P.green} t="K3s Cluster · VLAN 20 PROD · 10.10.20.0/24" s="T440p (master) · T430 (worker1) · P52 (worker2)"/>
         <Ln x1={423} y1={202} x2={423} y2={264} col={P.line} arr={aid}/>
         <Nd x={10}  y={268} w={142} h={64} rx={8} p={P.amber} t="Policy Engine" s="OPA · Kyverno"/>
         {[["dev",212],["staging",306],["prod",400],["monitoring",508]].map(([env,x])=>(
@@ -1106,7 +1415,7 @@ function IAM({P}) {
 function Storage({P}) {
   const aid="aST"; const AH=`url(#${aid})`;
   const nodes=[
-    {label:"T440p · Master", cx:110, disks:["512GB SSD (OS)","1TB HDD→SSD*","M.2 2242 256GB*"], note:"etcd · control vols"},
+    {label:"T440p · Master", cx:110, disks:["512GB SSD NGFF (OS)", "1TB HDD→SSD*", "1TB HDD→SSD*"], note:"etcd · control vols"},
     {label:"T430 · Worker 1", cx:330, disks:["512GB SSD (OS)","500GB HDD→SSD*","500GB HDD→SSD*"], note:"Longhorn replicas"},
     {label:"P52 · Worker 2",  cx:550, disks:["512GB NVMe (OS)","2TB NVMe*","Quadro P1000 ML"],   note:"App vols · builds"},
   ];
@@ -1145,7 +1454,7 @@ function Storage({P}) {
       <div style={{marginTop:16,display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
         <div style={{padding:16,background:P.bg2,borderRadius:8}}>
           <div style={{fontSize:13,fontWeight:500,marginBottom:8,color:P.txt}}>Inventario de almacenamiento</div>
-          {[["M720q","512GB NVMe — sin expansión disponible"],["T440p","512GB SSD + 1TB HDD + 1TB HDD + M.2 vacío"],["T430","512GB SSD + 500GB HDD + 500GB HDD"],["P52","512GB NVMe + 2.5\" libre + M.2 secundario"],["Dell 3501","256GB NVMe + 120GB SATA"],["T440p Parrot","512GB SSD + Ultrabay libre"]].map(([m,s])=>(
+          {[["M720q","512GB NVMe — sin expansión disponible"],["T440p","512GB SSD NGFF (slot WAN/OS) + 1TB HDD (SATA) + 1TB HDD (Ultrabay)"],["T430","512GB SSD (WAN) + 500GB HDD + 500GB HDD"],["P52","512GB NVMe + 2.5\" libre + M.2 secundario"],["Dell 3501","256GB NVMe + 120GB SATA"],["T440p Parrot","512GB SSD NGFF (slot WAN/OS) + Ultrabay libre"]].map(([m,s])=>(
             <div key={m} style={{display:"flex",gap:8,marginBottom:6,alignItems:"baseline"}}>
               <span style={{fontSize:11,fontWeight:500,padding:"2px 6px",borderRadius:3,background:P.blue[0],color:P.blue[2],minWidth:80,flexShrink:0}}>{m}</span>
               <span style={{fontSize:12,color:P.txts}}>{s}</span>
