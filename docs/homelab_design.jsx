@@ -155,7 +155,7 @@ export default function App() {
   const P = palette(dark);
   const [tab, setTab] = useState("worker2");
   const [sel, setSel] = useState(null);
-  const tabs=[{id:"worker2",l:"⭐ Worker 2"},{id:"hw",l:"Hardware"},{id:"up",l:"Upgrades"},{id:"net",l:"Red"},{id:"adguard",l:"🛡 AdGuard Home"},{id:"k3s",l:"Cluster K3s"},{id:"git",l:"GitOps"},{id:"iam",l:"IAM"},{id:"stor",l:"Storage"}];
+  const tabs=[{id:"worker2",l:"⭐ Worker 2"},{id:"hw",l:"Hardware"},{id:"up",l:"Upgrades"},{id:"net",l:"Red"},{id:"switch",l:"🔀 Switch & VLANs"},{id:"adguard",l:"🛡 AdGuard Home"},{id:"k3s",l:"Cluster K3s"},{id:"git",l:"GitOps"},{id:"iam",l:"IAM"},{id:"stor",l:"Storage"}];
   return (
     <div style={{fontFamily:"var(--font-sans)",background:P.bg,minHeight:"100vh"}}>
       <div style={{background:P.bg2,borderBottom:`0.5px solid ${P.bdr}`,padding:"20px 24px 0"}}>
@@ -164,6 +164,7 @@ export default function App() {
         <p style={{fontSize:13,color:P.txts,margin:"0 0 20px"}}>
           Production-ready · K3s · GitOps · IAM · DevOps · Networking
           <span style={{marginLeft:10,padding:"2px 8px",borderRadius:4,background:P.teal[0],color:P.teal[2],fontSize:11,fontWeight:500}}>Corregido: 2 T440p</span>
+          <span style={{marginLeft:6,padding:"2px 8px",borderRadius:4,background:P.green[0],color:P.green[2],fontSize:11,fontWeight:500}}>Switch ✓ VLANs ✓</span>
         </p>
         <div style={{display:"flex",gap:2,overflowX:"auto"}}>
           {tabs.map(t=>(
@@ -176,6 +177,7 @@ export default function App() {
         {tab==="hw"&&<Hardware P={P} sel={sel} setSel={setSel}/>}
         {tab==="up"&&<Upgrades P={P}/>}
         {tab==="net"&&<Network P={P}/>}
+        {tab==="switch"&&<SwitchVlan P={P}/>}
         {tab==="adguard"&&<AdGuard P={P}/>}
         {tab==="k3s"&&<K3s P={P}/>}
         {tab==="git"&&<GitOps P={P}/>}
@@ -429,17 +431,17 @@ function Network({P}) {
         <text x={330} y={485} textAnchor="middle" fontSize="11" fill={P.txts}>P53 daily driver · clientes externos</text>
         <line x1={330} y1={466} x2={330} y2={482} stroke={P.line} strokeWidth="0.8"/>
         {/* DNS resolution label */}
-        <text x={60} y={370} textAnchor="middle" fontSize="9" fill={P.green[1]}>192.168.10.2</text>
-        <text x={60} y={380} textAnchor="middle" fontSize="9" fill={P.green[1]}>(IP fija LXC)</text>
+        <text x={60} y={370} textAnchor="middle" fontSize="9" fill={P.green[1]}>192.168.1.100</text>
+        <text x={60} y={380} textAnchor="middle" fontSize="9" fill={P.green[1]}>(→ 10.10.10.3)</text>
       </svg>
       <div style={{marginTop:16,display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(200px,1fr))",gap:10}}>
         {[
-          {v:"VLAN 10 · MGMT",   d:"SSH, Proxmox UI, pfSense admin.",    pal:"teal"},
-          {v:"VLAN 20 · PROD",   d:"K3s nodes, workloads, Longhorn.",     pal:"blue"},
-          {v:"VLAN 30 · DEV",    d:"Builds, staging, CI/CD runners.",     pal:"purple"},
-          {v:"VLAN 40 · STORAGE",d:"Tráfico replicación Longhorn.",       pal:"amber"},
-          {v:"VLAN 50 · PENTEST",d:"Aislada. T440p Parrot OS únicamente.",pal:"red"},
-          {v:"VLAN 60 · DMZ",    d:"Ingress externo controlado.",          pal:"teal"},
+          {v:"VLAN 10 · MGMT",    d:"10.10.10.0/24 · Proxmox, switch, AdGuard", pal:"teal"},
+          {v:"VLAN 20 · PROD",    d:"10.10.20.0/24 · K3s nodes, Longhorn",       pal:"blue"},
+          {v:"VLAN 30 · DEV",     d:"10.10.30.0/24 · Builds, staging, CI/CD",    pal:"purple"},
+          {v:"VLAN 40 · STORAGE", d:"10.10.40.0/24 · Longhorn replication",      pal:"amber"},
+          {v:"VLAN 50 · DMZ",     d:"10.10.50.0/24 · Ingress / servicios",       pal:"green"},
+          {v:"VLAN 90 · PENTEST", d:"10.10.90.0/24 · T440p Parrot — aislado",   pal:"red"},
         ].map(v=>{
           const cp=P[v.pal];
           return (
@@ -450,6 +452,260 @@ function Network({P}) {
           );
         })}
       </div>
+    </div>
+  );
+}
+
+// ── Switch & VLANs ─────────────────────────────────────────────────────────────
+function SwitchVlan({P}) {
+  const [activeTab, setActiveTab] = useState("overview");
+  const subTabs=[{id:"overview",l:"Overview"},{id:"ports",l:"Port Layout"},{id:"vlans",l:"VLAN Table"},{id:"pvid",l:"PVID Config"},{id:"proxmox",l:"Proxmox Bridge"}];
+
+  const vlans=[
+    {id:1,  name:"Default",  tagged:"—",    untagged:"1-8", subnet:"—",             pal:"gray"},
+    {id:10, name:"MGMT",     tagged:"1",    untagged:"—",   subnet:"10.10.10.0/24", pal:"teal"},
+    {id:20, name:"PROD",     tagged:"1",    untagged:"2-3", subnet:"10.10.20.0/24", pal:"blue"},
+    {id:30, name:"DEV",      tagged:"1",    untagged:"—",   subnet:"10.10.30.0/24", pal:"purple"},
+    {id:40, name:"STORAGE",  tagged:"1",    untagged:"—",   subnet:"10.10.40.0/24", pal:"amber"},
+    {id:50, name:"DMZ",      tagged:"1",    untagged:"—",   subnet:"10.10.50.0/24", pal:"green"},
+    {id:90, name:"PENTEST",  tagged:"1",    untagged:"8",   subnet:"10.10.90.0/24", pal:"red"},
+  ];
+
+  const ports=[
+    {port:1, device:"M720q (enp1s0f0)", role:"TRUNK",          vlan:"10,20,30,40,50,90", mode:"Tagged",   pvid:1,  pal:"teal"},
+    {port:2, device:"T440p (K3s master)", role:"K3s PROD",     vlan:"20",               mode:"Untagged", pvid:20, pal:"blue"},
+    {port:3, device:"T430 (K3s worker1)", role:"K3s PROD",     vlan:"20",               mode:"Untagged", pvid:20, pal:"blue"},
+    {port:4, device:"— libre",            role:"—",            vlan:"—",                mode:"—",        pvid:1,  pal:"gray"},
+    {port:5, device:"— libre",            role:"—",            vlan:"—",                mode:"—",        pvid:1,  pal:"gray"},
+    {port:6, device:"— libre",            role:"—",            vlan:"—",                mode:"—",        pvid:1,  pal:"gray"},
+    {port:7, device:"— libre",            role:"—",            vlan:"—",                mode:"—",        pvid:1,  pal:"gray"},
+    {port:8, device:"T440p Parrot OS",    role:"PENTEST",      vlan:"90",               mode:"Untagged", pvid:90, pal:"red"},
+  ];
+
+  return (
+    <div>
+      {/* Header */}
+      <div style={{padding:"16px 20px",background:P.blue[0],border:`0.5px solid ${P.blue[1]}`,borderRadius:12,marginBottom:20}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
+          <div>
+            <div style={{fontSize:15,fontWeight:500,color:P.blue[2],marginBottom:4}}>🔀 TP-Link TL-SG108E · 802.1Q VLANs</div>
+            <div style={{fontSize:13,color:P.blue[2]}}>Hardware v6.0 · Firmware 1.0.0 Build 20250710 · IP: 10.10.10.2 · MAC: AC:A7:F1:36:55:96</div>
+          </div>
+          <div style={{textAlign:"right"}}>
+            <div style={{fontSize:11,fontWeight:500,padding:"3px 8px",borderRadius:4,background:P.bg,color:P.green[1],marginBottom:4}}>✓ CONFIGURADO</div>
+            <div style={{fontSize:11,color:P.blue[2]}}>vmbr1 · enp1s0f0</div>
+          </div>
+        </div>
+      </div>
+
+      {/* Sub-tabs */}
+      <div style={{display:"flex",gap:4,marginBottom:20,borderBottom:`0.5px solid ${P.bdr}`}}>
+        {subTabs.map(s=>(
+          <button key={s.id} onClick={()=>setActiveTab(s.id)} style={{padding:"7px 14px",fontSize:13,border:"none",cursor:"pointer",borderRadius:"6px 6px 0 0",background:activeTab===s.id?P.bg:"transparent",color:activeTab===s.id?P.txt:P.txts,fontWeight:activeTab===s.id?500:400,borderBottom:activeTab===s.id?`2px solid ${P.blue[1]}`:"2px solid transparent"}}>{s.l}</button>
+        ))}
+      </div>
+
+      {activeTab==="overview" && (
+        <div>
+          <svg width="100%" viewBox="0 0 660 420" role="img">
+            <title>Arquitectura física del switch TL-SG108E</title>
+            <defs><marker id="aSW" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke={P.line} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></marker></defs>
+            {/* ISP */}
+            <Nd x={260} y={10} w={140} h={34} p={P.gray} t="Internet / ISP"/>
+            {/* Proxmox */}
+            <rect x={80} y={66} width={500} height={110} rx={10} fill={P.bg2} stroke={P.bdr} strokeWidth="1" strokeDasharray="5 3"/>
+            <text x={100} y={85} fontSize="11" fontWeight="500" fill={P.txts}>Proxmox VE — M720q · 192.168.1.65</text>
+            <Nd x={100} y={92}  w={160} h={70} rx={8} p={P.gray}  t="vmbr0 (nic0)" s="192.168.1.65 · WAN"/>
+            <Nd x={280} y={92}  w={160} h={70} rx={8} p={P.teal}  t="vmbr1 (enp1s0f0)" s="VLAN-aware · trunk"/>
+            <Nd x={460} y={92}  w={100} h={70} rx={8} p={P.gray}  t="AdGuard LXC" s="192.168.1.100"/>
+            <Ln x1={330} y1={44} x2={180} y2={92} col={P.line} arr="aSW"/>
+            <Ln x1={330} y1={44} x2={360} y2={92} col={P.line} arr="aSW"/>
+            {/* Switch */}
+            <Nd x={200} y={200} w={260} h={50} rx={8} p={P.blue} t="TL-SG108E · 10.10.10.2" s="8-port Gigabit · 802.1Q · v6.0"/>
+            <Ln x1={360} y1={162} x2={330} y2={200} col={P.line} arr="aSW"/>
+            <text x={350} y={183} fontSize="9" fill={P.blue[1]}>trunk 802.1Q</text>
+            {/* Port labels */}
+            {[
+              {label:"P1\nTRUNK", x:160, col:P.teal},
+              {label:"P2\nT440p", x:230, col:P.blue},
+              {label:"P3\nT430",  x:300, col:P.blue},
+              {label:"P4-7\nlibre",x:380, col:P.gray},
+              {label:"P8\nParrot", x:470, col:P.red},
+            ].map(n=>(
+              <g key={n.label}>
+                <rect x={n.x-34} y={272} width={70} height={50} rx={6} fill={n.col[0]} stroke={n.col[1]} strokeWidth="0.5"/>
+                {n.label.split("\n").map((line,i)=>(
+                  <text key={i} x={n.x} y={292+i*16} textAnchor="middle" dominantBaseline="central" fontSize="10" fontWeight={i===0?"500":"400"} fill={n.col[2]}>{line}</text>
+                ))}
+                <line x1={n.x} y1={250} x2={n.x} y2={272} stroke={n.col[1]} strokeWidth="0.8" markerEnd="url(#aSW)"/>
+              </g>
+            ))}
+            {/* IP addresses */}
+            <text x={230} y={345} textAnchor="middle" fontSize="9" fill={P.blue[1]}>VLAN 20</text>
+            <text x={300} y={345} textAnchor="middle" fontSize="9" fill={P.blue[1]}>VLAN 20</text>
+            <text x={470} y={345} textAnchor="middle" fontSize="9" fill={P.red[1]}>VLAN 90</text>
+            {/* PVID note */}
+            <text x={330} y={375} textAnchor="middle" fontSize="11" fill={P.txts}>Addressing: 10.10.{"{VLAN}"}.0/24 per VLAN · Gateway: 10.10.{"{VLAN}"}.1 (pfSense)</text>
+          </svg>
+          <div style={{marginTop:16,padding:16,background:P.bg2,borderRadius:8,fontSize:13,color:P.txts}}>
+            <div style={{fontWeight:500,color:P.txt,marginBottom:8}}>Estado actual del lab</div>
+            {[
+              ["Switch IP","10.10.10.2 (VLAN 10 MGMT)"],
+              ["Firmware","1.0.0 Build 20250710 — más reciente disponible"],
+              ["802.1Q","Habilitado — Port-based y MTU VLAN deshabilitados"],
+              ["VLANs configuradas","10, 20, 30, 40, 50, 90"],
+              ["Proxmox bridge","vmbr1 — bridge-vlan-aware yes — bridge-vids 2-4094"],
+              ["pfSense","Pendiente de configuración como inter-VLAN router"],
+              ["AdGuard","192.168.1.100 (temporal) → migrará a 10.10.10.3 post-pfSense"],
+            ].map(([k,v])=>(
+              <div key={k} style={{display:"flex",gap:8,marginBottom:6,fontSize:13}}>
+                <span style={{color:P.txts,minWidth:160,flexShrink:0}}>{k}</span>
+                <span style={{color:P.txt}}>{v}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {activeTab==="ports" && (
+        <div>
+          <p style={{fontSize:14,color:P.txts,margin:"0 0 16px"}}>Layout físico de puertos del switch. Puerto 1 = trunk hacia Proxmox. Puerto 8 = Parrot OS aislado.</p>
+          <div style={{overflowX:"auto"}}>
+            <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
+              <thead>
+                <tr style={{background:P.bg2}}>
+                  {["Puerto","Dispositivo","Rol","VLAN(s)","Modo","PVID"].map(h=>(
+                    <th key={h} style={{padding:"10px 12px",textAlign:"left",color:P.txts,fontWeight:500,borderBottom:`1px solid ${P.bdr}`}}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {ports.map(p=>{
+                  const cp=P[p.pal];
+                  return (
+                    <tr key={p.port} style={{borderBottom:`0.5px solid ${P.bdr}`}}>
+                      <td style={{padding:"10px 12px"}}>
+                        <span style={{fontWeight:600,padding:"2px 8px",borderRadius:4,background:cp[0],color:cp[2]}}>P{p.port}</span>
+                      </td>
+                      <td style={{padding:"10px 12px",color:P.txt}}>{p.device}</td>
+                      <td style={{padding:"10px 12px"}}>
+                        <span style={{fontSize:11,padding:"2px 7px",borderRadius:4,background:cp[0],color:cp[2]}}>{p.role}</span>
+                      </td>
+                      <td style={{padding:"10px 12px",color:P.txt,fontFamily:"var(--font-mono)",fontSize:12}}>{p.vlan}</td>
+                      <td style={{padding:"10px 12px",color:p.mode==="Tagged"?P.blue[1]:p.mode==="Untagged"?P.green[1]:P.txts}}>{p.mode}</td>
+                      <td style={{padding:"10px 12px",fontFamily:"var(--font-mono)",fontSize:12,color:P.txt}}>{p.pvid}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          <div style={{marginTop:16,padding:14,background:P.bg2,borderRadius:8,fontSize:13,color:P.txts}}>
+            <strong style={{color:P.txt}}>Puertos libres 4-7:</strong> disponibles para P52 (VLAN 20), Dell 3501 (VLAN 10), y expansión futura.
+          </div>
+        </div>
+      )}
+
+      {activeTab==="vlans" && (
+        <div>
+          <p style={{fontSize:14,color:P.txts,margin:"0 0 16px"}}>Tabla completa de VLANs 802.1Q configuradas en el switch.</p>
+          <div style={{overflowX:"auto"}}>
+            <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
+              <thead>
+                <tr style={{background:P.bg2}}>
+                  {["VLAN ID","Nombre","Subred","Gateway (pfSense)","Tagged","Untagged"].map(h=>(
+                    <th key={h} style={{padding:"10px 12px",textAlign:"left",color:P.txts,fontWeight:500,borderBottom:`1px solid ${P.bdr}`}}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {vlans.map(v=>{
+                  const cp=P[v.pal];
+                  return (
+                    <tr key={v.id} style={{borderBottom:`0.5px solid ${P.bdr}`}}>
+                      <td style={{padding:"10px 12px"}}>
+                        <span style={{fontWeight:600,padding:"2px 8px",borderRadius:4,background:cp[0],color:cp[2]}}>{v.id}</span>
+                      </td>
+                      <td style={{padding:"10px 12px",fontWeight:500,color:cp[2]}}>{v.name}</td>
+                      <td style={{padding:"10px 12px",fontFamily:"var(--font-mono)",fontSize:12,color:P.txt}}>{v.subnet}</td>
+                      <td style={{padding:"10px 12px",fontFamily:"var(--font-mono)",fontSize:12,color:P.txts}}>
+                        {v.subnet!=="—" ? v.subnet.replace("0/24","1") : "—"}
+                      </td>
+                      <td style={{padding:"10px 12px",color:P.txt}}>{v.tagged}</td>
+                      <td style={{padding:"10px 12px",color:P.txt}}>{v.untagged}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          <div style={{marginTop:16,padding:14,background:P.red[0],border:`0.5px solid ${P.red[1]}`,borderRadius:8,fontSize:13,color:P.red[2]}}>
+            <strong>VLAN 90 PENTEST:</strong> completamente aislada. pfSense tendrá reglas que bloqueen cualquier tráfico hacia/desde otras VLANs. El T440p Parrot OS no tiene ruta a 10.10.x.x excepto 10.10.90.0/24.
+          </div>
+        </div>
+      )}
+
+      {activeTab==="pvid" && (
+        <div>
+          <p style={{fontSize:14,color:P.txts,margin:"0 0 16px"}}>El PVID define a qué VLAN se asigna el tráfico no etiquetado que entra por cada puerto.</p>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))",gap:12,marginBottom:20}}>
+            {ports.map(p=>{
+              const cp=P[p.pal];
+              return (
+                <div key={p.port} style={{padding:14,background:P.bg,border:`0.5px solid ${P.bdr}`,borderRadius:8}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+                    <span style={{fontSize:14,fontWeight:600,padding:"2px 10px",borderRadius:4,background:cp[0],color:cp[2]}}>Puerto {p.port}</span>
+                    <span style={{fontSize:13,fontFamily:"var(--font-mono)",fontWeight:500,color:P.txt}}>PVID {p.pvid}</span>
+                  </div>
+                  <div style={{fontSize:12,color:P.txt,marginBottom:4}}>{p.device}</div>
+                  <div style={{fontSize:11,color:P.txts}}>{p.mode==="Tagged"?"Trunk — envía tráfico pre-etiquetado":p.mode==="Untagged"?`Tráfico sin tag → VLAN ${p.pvid}`:"Sin dispositivo"}</div>
+                </div>
+              );
+            })}
+          </div>
+          <div style={{padding:14,background:P.bg2,borderRadius:8}}>
+            <div style={{fontSize:13,fontWeight:500,color:P.txt,marginBottom:8}}>Lógica del PVID</div>
+            <div style={{fontSize:13,color:P.txts,lineHeight:1.8}}>
+              Cuando un frame llega al <strong style={{color:P.txt}}>puerto 2 (T440p)</strong> sin etiqueta VLAN, el switch le asigna <strong style={{color:P.txt}}>PVID 20</strong> y lo trata como tráfico de VLAN 20. Al salir por el puerto 1 (trunk), el switch agrega la etiqueta <strong style={{color:P.txt}}>VLAN 20</strong>. En dirección inversa: el frame llega al puerto 1 etiquetado como VLAN 20, el switch elimina la etiqueta y lo entrega al puerto 2 como frame Ethernet normal.
+            </div>
+          </div>
+        </div>
+      )}
+
+      {activeTab==="proxmox" && (
+        <div>
+          <p style={{fontSize:14,color:P.txts,margin:"0 0 16px"}}>Configuración del bridge vmbr1 en Proxmox que actúa como el trunk hacia el switch.</p>
+          <div style={{padding:"14px 18px",background:P.bg2,border:`0.5px solid ${P.bdr}`,borderRadius:8,marginBottom:20}}>
+            <div style={{fontSize:13,fontWeight:500,color:P.txt,marginBottom:10}}>/etc/network/interfaces — vmbr1</div>
+            <pre style={{fontFamily:"var(--font-mono)",fontSize:12,color:P.txt,lineHeight:1.9,margin:0}}>
+              {`auto vmbr1\niface vmbr1 inet manual\n        bridge-ports enp1s0f0\n        bridge-stp off\n        bridge-fd 0\n        bridge-vlan-aware yes\n        bridge-vids 2-4094\n#LAN trunk 802.1Q → TL-SG108E`}
+            </pre>
+          </div>
+          <div style={{marginBottom:16}}>
+            <div style={{fontSize:13,fontWeight:500,color:P.txt,marginBottom:10}}>Asignar VMs/LXCs a VLANs</div>
+            <pre style={{fontFamily:"var(--font-mono)",fontSize:12,color:P.txt,lineHeight:1.9,padding:"14px 18px",background:P.bg2,borderRadius:8,margin:0}}>
+              {`# VM en VLAN 20 (PROD)\nqm set <VMID> --net0 virtio,bridge=vmbr1,tag=20\n\n# LXC en VLAN 10 (MGMT)\npct set <CTID> --net0 name=eth0,bridge=vmbr1,tag=10,ip=10.10.10.x/24,gw=10.10.10.1\n\n# Verificar bridge\nbridge vlan show\nip link show vmbr1`}
+            </pre>
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+            {[
+              {label:"vmbr0",sub:"nic0 · 192.168.1.65 · ISP/WAN",pal:"gray"},
+              {label:"vmbr1",sub:"enp1s0f0 · VLAN-aware · trunk switch",pal:"blue"},
+              {label:"vmbr2",sub:"enp1s0f1 · VPN uplink (futuro)",pal:"gray"},
+              {label:"vmbr3",sub:"enp1s0f2 · OPT2 reservado",pal:"gray"},
+              {label:"vmbr4",sub:"enp1s0f3 · Storage/backup",pal:"gray"},
+            ].map(b=>{
+              const cp=P[b.pal];
+              return (
+                <div key={b.label} style={{padding:12,background:cp[0],borderRadius:8,border:`0.5px solid ${cp[1]}`}}>
+                  <div style={{fontSize:13,fontWeight:600,color:cp[2],fontFamily:"var(--font-mono)",marginBottom:4}}>{b.label}</div>
+                  <div style={{fontSize:12,color:cp[2]}}>{b.sub}</div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -496,16 +752,16 @@ function AdGuard({P}) {
             <rect x={30} y={44} width={280} height={100} rx={8} fill={P.teal[0]} stroke={P.teal[1]} strokeWidth="0.5"/>
             <text x={170} y={68} textAnchor="middle" dominantBaseline="central" fontSize="12" fontWeight="500" fill={P.teal[2]}>pfSense VM</text>
             <text x={170} y={84} textAnchor="middle" dominantBaseline="central" fontSize="10" fill={P.teal[2]}>2 vCPU · 4GB RAM · 20GB disk</text>
-            <text x={170} y={100} textAnchor="middle" dominantBaseline="central" fontSize="10" fill={P.teal[2]}>WAN: eth0 (ISP) · LAN: VLAN trunk</text>
-            <text x={170} y={116} textAnchor="middle" dominantBaseline="central" fontSize="10" fill={P.teal[2]}>DNS forwarder → 192.168.10.2</text>
-            <text x={170} y={132} textAnchor="middle" dominantBaseline="central" fontSize="10" fill={P.teal[2]}>DHCP option 6 → 192.168.10.2</text>
+            <text x={170} y={100} textAnchor="middle" dominantBaseline="central" fontSize="10" fill={P.teal[2]}>WAN: eth0 (ISP) · LAN: vmbr1 VLAN trunk</text>
+            <text x={170} y={116} textAnchor="middle" dominantBaseline="central" fontSize="10" fill={P.teal[2]}>DNS forwarder → 10.10.10.3</text>
+            <text x={170} y={132} textAnchor="middle" dominantBaseline="central" fontSize="10" fill={P.teal[2]}>DHCP option 6 → 10.10.10.3 por VLAN</text>
 
             {/* AdGuard LXC */}
             <rect x={350} y={44} width={280} height={100} rx={8} fill={P.green[0]} stroke={P.green[1]} strokeWidth="1"/>
             <text x={490} y={68} textAnchor="middle" dominantBaseline="central" fontSize="12" fontWeight="500" fill={P.green[2]}>AdGuard Home LXC</text>
             <text x={490} y={84} textAnchor="middle" dominantBaseline="central" fontSize="10" fill={P.green[2]}>1 vCPU · 512MB RAM · 8GB disk</text>
-            <text x={490} y={100} textAnchor="middle" dominantBaseline="central" fontSize="10" fill={P.green[2]}>IP fija: 192.168.10.2 (VLAN 10)</text>
-            <text x={490} y={116} textAnchor="middle" dominantBaseline="central" fontSize="10" fill={P.green[2]}>Puerto 53 (DNS) · 3000 (UI)</text>
+            <text x={490} y={100} textAnchor="middle" dominantBaseline="central" fontSize="10" fill={P.green[2]}>IP actual: 192.168.1.100 (temporal)</text>
+            <text x={490} y={116} textAnchor="middle" dominantBaseline="central" fontSize="10" fill={P.green[2]}>Post-pfSense: 10.10.10.3 (VLAN 10)</text>
             <text x={490} y={132} textAnchor="middle" dominantBaseline="central" fontSize="10" fill={P.green[2]}>Unprivileged · nesting=1</text>
 
             {/* Arrow pfSense → AdGuard */}
