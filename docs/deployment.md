@@ -22,7 +22,7 @@ cd /home/admin/Documents/HomeLab/HomePage
 ```
 
 ### Jenkins Pipeline
-1. Access Jenkins: http://192.168.1.91:32000 (admin/admin123)
+1. Access Jenkins: http://192.168.1.91:32000 (credentials in Vault: `secret/jenkins/admin`)
 2. Go to homepage-pipeline
 3. Click "Build Now"
 

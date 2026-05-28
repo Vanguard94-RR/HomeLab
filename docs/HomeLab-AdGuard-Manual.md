@@ -430,9 +430,10 @@ Navigate to `Settings → General Settings`
 http://192.168.1.254
 ```
 
-Default credentials (if unchanged):
-- Username: `adminadmin`
-- Password: `adminadmin`
+Default credentials (MUST be changed on first login):
+- Username: `admin` (or configured at setup)
+- Password: **Set a strong password during installation** (not stored in git)
+  - See AdGuard documentation for password reset if needed
 
 ### 6.2 Configure DHCP DNS Distribution
 
