@@ -13,7 +13,7 @@ This HomeLab is designed as an enterprise-style platform engineering environment
 
 The current repository documents a strong foundation: Proxmox VE on a Lenovo M720q, pfSense CE as inter-VLAN router and firewall, AdGuard Home for internal DNS and filtering, a TP-Link TL-SG108E managed switch with 802.1Q VLANs, and Fedora-based K3s nodes prepared for cluster installation. The repository also contains historical GitOps assets under `docs/old` that model Jenkins, Vault, External Secrets Operator, ArgoCD, Helm charts, and workload delivery patterns.
 
-The target architecture is a reproducible GitOps platform where Git is the source of truth, Jenkins performs CI only, ArgoCD owns reconciliation, Vault is the secrets authority, External Secrets Operator synchronizes runtime secrets, Keycloak provides identity federation, pfSense enforces segmentation, and K3s hosts platform and showcase workloads.
+The target architecture is a reproducible GitOps platform where Git is the source of truth, Jenkins performs CI only, ArgoCD owns reconciliation, Vault is the secrets authority, External Secrets Operator synchronizes runtime secrets, Keycloak provides identity federation, pfSense enforces segmentation, Cilium provides eBPF-based cluster networking, Istio provides application-level service mesh controls, and K3s hosts platform and showcase workloads.
 
 This document intentionally separates:
 
@@ -33,6 +33,7 @@ This document intentionally separates:
 | CI and CD separation | Jenkins builds, tests, scans, and publishes artifacts. ArgoCD deploys. Jenkins must not run direct `kubectl apply` or `helm upgrade` in the target model. |
 | Least privilege | IAM, Vault policies, Kubernetes RBAC, and VLAN firewall rules restrict access by role, namespace, and network zone. |
 | Network segmentation first | Management, production, development, storage, DMZ, and pentesting traffic are separated by VLAN and enforced through pfSense. |
+| Zero-trust east-west traffic | Cilium enforces network policy and flow visibility at the CNI layer; Istio adds service identity, mTLS, traffic shaping, and canary release controls. |
 | Reproducibility | Bootstrap, validation, and recovery procedures must be scripted and documented. |
 | Observable operations | Metrics, logs, uptime probes, alerts, and dashboards become first-class platform services. |
 | Honest portfolio architecture | The design distinguishes proven implementation from planned target-state components. |
@@ -50,6 +51,7 @@ This document intentionally separates:
 | Firewall and routing | pfSense CE 2.7.2 VM with WAN, LAN, VLAN subinterfaces, DHCP, and firewall policy documentation. | Strong foundation |
 | DNS | AdGuard Home LXC dual-homed on VLAN 10 and Telmex LAN; DNS rewrites and upstream DoH documented. | Strong foundation |
 | K3s readiness | T440p and T430 Fedora nodes passed pre-install checks; scripts exist for audit and remediation. | Prepared |
+| CNI and service mesh design | K3s documentation and `homelab_design.jsx` define Cilium/Hubble plus Istio/Kiali as target platform capabilities. | Designed |
 | Hardware planning | `homelab_design.jsx` models machines, roles, upgrades, VLANs, K3s, GitOps, IAM, and storage. | Strong design asset |
 | Local AI workstation | P53 local AI environment documented with Ollama, GPU offload, model storage, and IDE integration. | Specialized workload |
 
@@ -74,6 +76,7 @@ This document intentionally separates:
 | Legacy scripts model direct deploys | Direct `helm upgrade`/`kubectl` deployment conflicts with target GitOps architecture. | Refactor CI to publish artifacts and commit declarative state only. |
 | K3s is documented as ready, not fully reconciled | Architects will ask what is running versus planned. | Add installation evidence, node joins, kubeconfig handling, and post-install validation. |
 | IAM target lacks active implementation evidence | Keycloak/OIDC and RBAC are architectural goals but not yet implemented. | Add Keycloak phase with OIDC integrations and RBAC maps. |
+| Service mesh lacks implementation evidence | Istio/Kiali are present in the visual design and K3s manual, but not yet represented as deployed platform state. | Add service mesh rollout after Cilium; validate mTLS, Kiali topology, and canary routing. |
 | Storage HA needs a third worker | Longhorn with two nodes has limited failure tolerance. | Add P52 as worker2 and dedicate SSD/NVMe-backed Longhorn paths. |
 
 ---
@@ -114,6 +117,8 @@ flowchart TB
     observability["Prometheus, Grafana, Loki<br/>Observability"]
     longhorn["Longhorn<br/>Persistent storage"]
     ingress["Ingress, TLS, DMZ services"]
+    cilium["Cilium + Hubble<br/>eBPF CNI, policy, flow visibility"]
+    mesh["Istio + Kiali<br/>mTLS, traffic policy, topology"]
   end
 
   admin --> workstation
@@ -134,14 +139,16 @@ flowchart TB
 
   github --> jenkins
   github --> argocd
-  argocd --> platform
+  argocd --> platformLayer
   vault --> eso
-  eso --> platform
+  eso --> platformLayer
   keycloak --> argocd
   keycloak --> jenkins
   keycloak --> observability
-  longhorn --> platform
-  ingress --> platform
+  longhorn --> platformLayer
+  ingress --> platformLayer
+  cilium --> platformLayer
+  mesh --> platformLayer
 
   classDef person fill:#f8fafc,stroke:#475569,color:#0f172a
   classDef edge fill:#e0f2fe,stroke:#0284c7,color:#075985
@@ -161,7 +168,7 @@ flowchart TB
   class vault,eso,keycloak iam
   class longhorn storage
   class observability obs
-  class ingress security
+  class ingress,cilium,mesh security
   class ai k8s
 
   style edgeLayer fill:#eff6ff,stroke:#60a5fa
@@ -172,7 +179,7 @@ flowchart TB
 
 ### Architectural Intent
 
-The M720q hosts the enterprise edge: Proxmox, pfSense, and AdGuard. K3s nodes are separated on VLAN 20 and receive traffic through pfSense-controlled routing. GitHub becomes the declarative control plane. Jenkins validates and produces artifacts, while ArgoCD reconciles the cluster from Git. Vault and ESO eliminate static application secrets. Keycloak provides human identity and SSO. Observability, storage, and backup services make the platform operable rather than merely deployable.
+The M720q hosts the enterprise edge: Proxmox, pfSense, and AdGuard. K3s nodes are separated on VLAN 20 and receive traffic through pfSense-controlled routing. GitHub becomes the declarative control plane. Jenkins validates and produces artifacts, while ArgoCD reconciles the cluster from Git. Vault and ESO eliminate static application secrets. Keycloak provides human identity and SSO. Cilium/Hubble provide eBPF networking, policy enforcement, and flow visibility. Istio/Kiali provide service-level identity, mTLS, topology, and progressive delivery controls. Observability, storage, and backup services make the platform operable rather than merely deployable.
 
 ---
 
@@ -300,18 +307,24 @@ flowchart TB
 
   subgraph cluster["K3s Cluster Services"]
     coredns["CoreDNS"]
-    flannel["Flannel VXLAN<br/>10.42.0.0/16"]
+    cilium["Cilium CNI<br/>eBPF, NetworkPolicy, L2 LB"]
+    hubble["Hubble<br/>flow observability"]
     svc["Service CIDR<br/>10.43.0.0/16"]
-    traefik["Ingress Controller<br/>target DMZ integration"]
+    istio["Istio Service Mesh<br/>mTLS, traffic management"]
+    kiali["Kiali<br/>mesh topology dashboard"]
+    ingressCtl["Ingress Controllers<br/>Traefik internal, Nginx external"]
     metallb["MetalLB<br/>target L2 service IPs"]
   end
 
   cp --> coredns
-  cp --> flannel
+  cp --> cilium
   cp --> svc
-  w1 --> flannel
-  w2 --> flannel
-  traefik --> metallb
+  w1 --> cilium
+  w2 --> cilium
+  cilium --> hubble
+  cilium --> istio
+  istio --> kiali
+  ingressCtl --> metallb
 
   classDef node fill:#f3e8ff,stroke:#9333ea,color:#6b21a8
   classDef k8s fill:#ede9fe,stroke:#7c3aed,color:#5b21b6
@@ -319,19 +332,23 @@ flowchart TB
   classDef security fill:#fee2e2,stroke:#dc2626,color:#991b1b
 
   class cp,w1,w2 node
-  class coredns,flannel,svc k8s
+  class coredns,svc k8s
+  class cilium,hubble network
+  class istio,kiali security
   class metallb network
-  class traefik security
+  class ingressCtl security
 
   style vlan20 fill:#faf5ff,stroke:#9333ea
   style cluster fill:#f8fafc,stroke:#7c3aed
 ```
 
-Current K3s evidence shows node readiness, not full cluster reconciliation. The next architecture milestone should document:
+Current K3s evidence shows node readiness, not full cluster reconciliation. The target cluster design uses Cilium instead of the default K3s Flannel stack, so the install path should explicitly disable Flannel and the built-in network policy controller before installing Cilium. The next architecture milestone should document:
 
 - K3s server installation on `t440p-server`.
 - Worker join for `t430`.
 - P52 join as worker2.
+- Cilium and Hubble installation and health.
+- Istio and Kiali rollout for namespaces that need mesh controls.
 - `kubectl get nodes -o wide` evidence.
 - Firewall trusted sources for pod/service CIDRs.
 - DNS rewrite such as `k3s.mgmt -> 10.10.20.100`.
@@ -344,6 +361,69 @@ Current K3s evidence shows node readiness, not full cluster reconciliation. The 
 | T430 | Worker 1 / storage | General workloads and Longhorn replica after SSD upgrade. |
 | P52 | Worker 2 / build / ML | Build workloads, local inference, heavier apps; use taints/tolerations to protect platform workloads. |
 | M720q | Edge/virtualization | Do not schedule K3s workloads; keep firewall, DNS, and Proxmox responsibilities isolated. |
+
+### 6.3 CNI and Service Mesh
+
+```mermaid
+flowchart LR
+  subgraph cni["CNI and Network Policy"]
+    cilium["Cilium<br/>eBPF dataplane"]
+    np["NetworkPolicy<br/>L3/L4 controls"]
+    hubble["Hubble<br/>flow visibility"]
+  end
+
+  subgraph mesh["Service Mesh"]
+    istio["Istio<br/>service identity + mTLS"]
+    gateway["Istio Gateway / VirtualService<br/>traffic routing"]
+    kiali["Kiali<br/>mesh topology"]
+  end
+
+  subgraph apps["Mesh-enabled Workloads"]
+    appa["Service A"]
+    appb["Service B"]
+    appc["Canary / vNext"]
+  end
+
+  cilium --> np
+  cilium --> hubble
+  cilium --> istio
+  istio --> gateway
+  istio --> kiali
+  gateway --> appa
+  gateway --> appb
+  gateway -.->|"canary"| appc
+  appa <-->|"mTLS"| appb
+
+  classDef network fill:#dbeafe,stroke:#2563eb,color:#1e40af
+  classDef security fill:#fee2e2,stroke:#dc2626,color:#991b1b
+  classDef obs fill:#e0e7ff,stroke:#4f46e5,color:#3730a3
+  classDef k8s fill:#f3e8ff,stroke:#9333ea,color:#6b21a8
+
+  class cilium,np network
+  class hubble,kiali obs
+  class istio,gateway security
+  class appa,appb,appc k8s
+
+  style cni fill:#eff6ff,stroke:#2563eb
+  style mesh fill:#fef2f2,stroke:#dc2626
+  style apps fill:#faf5ff,stroke:#9333ea
+```
+
+The service mesh is a target-state capability, not a prerequisite for every workload. The recommended rollout is namespace-based:
+
+| Layer | Tool | Responsibility |
+|---|---|---|
+| CNI | Cilium | Pod networking, eBPF dataplane, L3/L4 NetworkPolicy, L2 announcements, optional transparent encryption. |
+| Flow visibility | Hubble | Network flow observability and service communication insight. |
+| Service mesh | Istio | Workload identity, mTLS, traffic splitting, retries, timeouts, circuit-breaking, and canary releases. |
+| Mesh UI | Kiali | Service topology, health, traffic graph, and Istio configuration validation. |
+
+Adoption policy:
+
+- Start with Cilium/Hubble as a cluster-wide foundation.
+- Add Istio only to namespaces that benefit from service identity, traffic shaping, or zero-trust east-west controls.
+- Keep infrastructure components that do not need L7 mesh behavior outside the mesh to reduce sidecar overhead.
+- Use Kiali and Hubble together: Hubble for network-flow visibility, Kiali for service-mesh topology and Istio configuration.
 
 ---
 
@@ -687,7 +767,32 @@ kubectl get externalsecrets -A
 kubectl auth can-i --list --as system:serviceaccount:external-secrets:external-secrets
 ```
 
-### Phase 4: CI/CD Modernization
+### Phase 4: CNI and Service Mesh
+
+**Goal:** Add enterprise east-west security, traffic management, and service communication visibility.
+
+Deliverables:
+
+- Install K3s with Flannel disabled or migrate cleanly before Cilium adoption.
+- Deploy Cilium with Hubble enabled.
+- Define baseline NetworkPolicies for platform and workload namespaces.
+- Deploy Istio control plane.
+- Enable sidecar injection only for selected namespaces.
+- Deploy Kiali and validate service topology.
+- Demonstrate mTLS and canary traffic splitting with a showcase app.
+
+Success criteria:
+
+```bash
+cilium status
+kubectl get pods -n kube-system -l k8s-app=cilium
+kubectl get pods -n istio-system
+kubectl get peerauthentication,destinationrule,virtualservice -A
+```
+
+Kiali should show mesh topology for at least one namespace, and Hubble should show pod-to-pod/service flows.
+
+### Phase 5: CI/CD Modernization
 
 **Goal:** Make Jenkins CI-only and GitOps-compatible.
 
@@ -704,7 +809,7 @@ Success criteria:
 - ArgoCD, not Jenkins, changes cluster workload state.
 - Rollback is possible by reverting Git state.
 
-### Phase 5: Storage and Backup
+### Phase 6: Storage and Backup
 
 **Goal:** Make persistent workloads recoverable.
 
@@ -723,7 +828,7 @@ kubectl get pods -n longhorn-system
 kubectl get pvc -A
 ```
 
-### Phase 6: Observability and Security
+### Phase 7: Observability and Security
 
 **Goal:** Operate the platform like a production environment.
 
@@ -740,7 +845,7 @@ Success criteria:
 - At least one alert path is tested.
 - Security policies block known-bad workload configurations.
 
-### Phase 7: Showcase Workloads
+### Phase 8: Showcase Workloads
 
 **Goal:** Demonstrate end-to-end platform capability.
 
@@ -750,7 +855,7 @@ Candidate workloads:
 - Private registry or Harbor.
 - CalibreWeb or media app with persistent storage.
 - Local AI service exposed internally.
-- Dev/staging sample app with CI, scanning, GitOps deployment, Vault secret, and observability dashboard.
+- Dev/staging sample app with CI, scanning, GitOps deployment, Vault secret, Istio traffic policy, and observability dashboard.
 
 Success criteria:
 
@@ -766,6 +871,7 @@ Success criteria:
 | Virtualization | Proxmox bridge design, VM/LXC separation, NIC mapping, persistent VLAN config. |
 | Linux administration | Fedora node preparation, SELinux, firewalld, systemd, storage layout. |
 | Kubernetes | K3s node prep, CNI planning, service/pod CIDRs, cluster operations. |
+| Service mesh | Cilium/Hubble and Istio/Kiali target architecture, mTLS, traffic management, canary routing, topology visibility. |
 | Platform engineering | GitOps, ArgoCD app-of-apps, environment promotion, validation gates. |
 | DevOps | Jenkins CI, immutable artifacts, registry, pipeline modernization. |
 | IAM | Keycloak target, OIDC integrations, RBAC, namespace access model. |
@@ -788,10 +894,10 @@ This blueprint was derived from the repository's current documents and historica
 | `docs/HomeLab-pfSense-config.md` | pfSense VM, VLAN interfaces, DHCP, firewall policy, routing model. |
 | `docs/HomeLab-Switch-VLAN.md` | TL-SG108E port layout, VLAN plan, PVIDs, switch management. |
 | `docs/HomeLab-Proxmox-VLAN-Persistence.md` | Proxmox bridge design, vmbr mapping, VLAN persistence. |
-| `docs/HomeLab-K3s-PreInstall-Manual.md` | K3s node inventory, readiness scripts, prerequisites, install roadmap. |
+| `docs/HomeLab-K3s-PreInstall-Manual.md` | K3s node inventory, readiness scripts, Cilium/Hubble target, Istio/Kiali service mesh target, prerequisites, install roadmap. |
 | `docs/HomeLab-Jenkins-Setup-Manual.md` | Jenkins target model, Helm/JCasC, Vault integration concepts. |
 | `docs/P53-i7-LocalIA-Config.md` | Local AI workstation and GPU-backed development workload. |
-| `docs/homelab_design.jsx` | Rich interactive model for hardware, network, GitOps, IAM, and storage decisions. |
+| `docs/homelab_design.jsx` | Rich interactive model for hardware, network, Cilium, service mesh, GitOps, IAM, and storage decisions. |
 | `docs/old/GitOps-Platform-Plan.md` | Historical GitOps platform plan, repository layout, CI/CD refactor, security roadmap. |
 | `docs/old/clusters/homelab/*` | ArgoCD app-of-apps, ESO, Jenkins, workloads reference manifests. |
 | `docs/old/HomeLab-Vault-Setup-Manual.md` | Vault bootstrap, Kubernetes auth, Jenkins integration reference. |
@@ -811,6 +917,8 @@ This blueprint was derived from the repository's current documents and historica
 | Add P52 as worker2 | Enables better scheduling capacity, Longhorn replication, build workloads, and local AI integration. |
 | Use ArgoCD for deployment authority | Creates auditable, reversible, declarative platform state. |
 | Keep Jenkins CI-only | Preserves CI/CD separation and prevents imperative deploy drift. |
+| Use Cilium as target CNI | Provides eBPF dataplane, NetworkPolicy, L2 service exposure options, and Hubble flow visibility. |
+| Add Istio selectively | Provides service identity, mTLS, traffic policy, canary releases, and Kiali topology without forcing every namespace into sidecar overhead. |
 | Use Vault plus ESO | Avoids static Kubernetes secrets and demonstrates enterprise secret delivery. |
 | Use Keycloak for IAM target | Shows identity federation, OIDC/SAML, and SSO integration skills. |
 | Keep pentesting isolated | Demonstrates secure red-team lab design without risking internal platform compromise. |
@@ -824,6 +932,8 @@ The desired end state is a fully documented, reproducible enterprise HomeLab whe
 - The network is segmented and enforced by pfSense.
 - Proxmox hosts only edge and virtualization responsibilities.
 - K3s runs platform and workload services on dedicated nodes.
+- Cilium provides the cluster network, policy layer, and Hubble flow observability.
+- Istio/Kiali provide selective service mesh capabilities for mTLS, traffic management, canaries, and topology.
 - GitHub is the source of truth for platform and application state.
 - Jenkins validates and publishes artifacts without deploying directly.
 - ArgoCD continuously reconciles the cluster.
