@@ -759,3 +759,100 @@ curl -X POST http://localhost:9091/-/reload
 ---
 
 *Document v1.0 — Enterprise HomeLab Troubleshooting · May 2026*
+
+---
+
+## 14. Proxmox — Clonación de disco con dd (thin pool corruption)
+
+### Síntoma
+
+Después de clonar el disco de Proxmox con `dd` y hacer swap físico, las VMs no arrancan:
+
+```
+Thin pool pve-data-tpool transaction_id is 0, while expected 23
+activating LV 'pve/vm-101-disk-0' failed: device-mapper: reload ioctl failed
+```
+
+### Causa
+
+El `dd` se ejecutó con las VMs y LXCs **corriendo activamente**. El thin pool de LVM estaba escribiendo metadatos durante la clonación. El clon captura el thin pool en `transaction_id=0` (estado vacío) en lugar del estado real (transaction_id=23 con todos los mapeos de bloques).
+
+### ⚠️ REGLA CRÍTICA para clonar Proxmox con thin pools
+
+```bash
+# SIEMPRE apagar todo antes del dd
+pct stop 101      # AdGuard LXC
+sleep 5
+qm stop 100       # pfSense VM
+sleep 5
+qm stop 199       # Windows VM (opcional)
+sleep 15
+
+# Verificar que todo está detenido
+pct list   # todos stopped
+qm list    # todos stopped
+
+# LUEGO ejecutar el dd
+dd if=/dev/nvme0n1 \
+   of=/dev/sda \
+   bs=4M \
+   status=progress \
+   conv=fsync
+```
+
+### Intentos de recuperación (documentados)
+
+| Método | Resultado |
+|---|---|
+| `lvconvert --repair pve/data` | Falla — thin_repair no encuentra input |
+| `thin_repair -i /dev/pve/data_tmeta -o /tmp/repaired.bin` | Falla — bad checksum |
+| `thin_dump /dev/pve/data_tmeta` | Muestra `<superblock transaction="0">` vacío |
+| Copiar tmeta raw del disco original | Falla — checksum block device diferente |
+| `dmsetup create` para mapear tmeta original | bad checksum |
+| Copiar sectores tmeta con dd (sector exacto) | Copia exitosa pero LVM ve duplicados |
+| `vgcfgrestore --force` (cambiar transaction_id) | Thin pool activa pero thin volumes fallan |
+| **Revertir al disco original** | ✅ Solución correcta |
+
+### Proceso correcto de clonación Proxmox → 1TB
+
+```bash
+# 1. Apagar todas las VMs/LXCs
+pct stop 101 && qm stop 100 && qm stop 199
+sleep 30
+
+# 2. Verificar que el disco destino no tiene LVM activo
+mount | grep sda      # nada montado
+pvs | grep sda        # si aparece: vgchange -an pve --select 'pv_name=~sda'
+
+# 3. Clonar
+dd if=/dev/nvme0n1 of=/dev/sda bs=4M status=progress conv=fsync
+
+# 4. Post-clonación
+sgdisk -e /dev/sda                    # mover GPT backup al final del disco
+sgdisk -v /dev/sda                    # verificar: "No problems found"
+
+# 5. Swap físico (apagar M720q)
+shutdown -h now
+# → quitar disco original, insertar clon
+
+# 6. Post-arranque en nuevo disco
+pvs                  # verificar LVM
+lvs pve              # verificar thin pool: twi-a-tz-- (activo)
+vgchange -ay pve     # si necesario
+qm start 100         # pfSense
+pct start 101        # AdGuard
+qm start 199         # Windows
+
+# 7. Expandir LVM (aprovecha el espacio extra del disco más grande)
+lvextend -l +100%FREE /dev/pve/root
+resize2fs /dev/pve/root  # o xfs_growfs / si es xfs
+```
+
+### Post-expansión del 1TB
+
+```bash
+# Expandir thin pool para usar el espacio adicional
+lvextend -L +477G /dev/pve/data_tpool
+# O agregar como nuevo PV si el VG está lleno
+```
+

@@ -45,12 +45,11 @@ Internet / ISP (Telmex Infinitum)
    │     │     │     │     │     │     │     │     │
   P1    P2    P3    P4    P5    P6    P7    P8
  Trunk  7490  5480  7490  T440p  P52  T430  Parrot
-        #1         #2  storage       mon   VLAN90
-       V20   V20   V20   V20    V20  V10   PENTEST
-  (M720q) ctrl  wkr2  wkr1  wkr4  wkr3  mgmt
+        #1    pend  #2   stor  pend  mon   VLAN90
+        #1    #2  (TBD) storage (TBD)      VLAN90
+       V20   V20   V20   V20    V20        PENTEST
+  (M720q) ctrl  wkr2  wkr1  wkr4  wkr3
 ```
-
-**Estado actual — Junio 2026 — VERIFICADO Y ACTIVO**
 
 ### Design Principles
 
@@ -67,13 +66,14 @@ Internet / ISP (Telmex Infinitum)
 |---|---|---|---|
 | Hypervisor | Lenovo M720q | Proxmox VE host | 192.168.1.65 (vmbr0) |
 | Switch | TP-Link TL-SG108E v6.0 | Layer 2 managed switch | 10.10.10.2 (VLAN 10) |
-| K3s control-plane | Dell Latitude 7490 #1 | K3s server — Port 2 | 10.10.20.100 (VLAN 20) |
-| K3s worker2 | Dell Latitude 5480 | K3s agent — Port 3 | 10.10.20.102 (VLAN 20) |
-| K3s worker1 | Dell Latitude 7490 #2 | K3s agent — Port 4 | 10.10.20.101 (VLAN 20) |
-| K3s worker4 storage | ThinkPad T440p | K3s agent — Port 5 | 10.10.20.104 (VLAN 20) |
-| K3s worker3 ML/GPU | ThinkPad P52 | K3s agent — Port 6 | 10.10.20.103 (VLAN 20) |
-| Monitoring server | ThinkPad T430 | Prometheus+Grafana+Loki — Port 7 | 10.10.10.10 (VLAN 10) |
+| K3s control-plane permanente | Dell Latitude 5480 | K3s server — Port 3 | 10.10.20.100 (VLAN 20) — pendiente |
+| K3s control-plane temporal → worker | Dell Latitude 7490 #1 | K3s agent/server — Port 2 | 10.10.20.101 (VLAN 20) ✅ |
+| K3s worker1 | Dell Latitude 7490 #2 | K3s agent — Port 4 | 10.10.20.102 (VLAN 20) ✅ |
+| K3s worker4 storage | ThinkPad T440p | K3s agent — Port 5 | 10.10.20.104 (VLAN 20) ✅ |
+| K3s worker3 ML/GPU | ThinkPad P52 | K3s agent — Port 6 | 10.10.20.103 (VLAN 20) — pendiente |
+| Monitoring | ThinkPad T430 | Prometheus+Grafana — Port 7 | 10.10.10.10 (VLAN 10) ✅ |
 | Pentesting | Parrot OS machine | Red team — Port 8 | VLAN 90 (10.10.90.x) |
+| RETIRED | ThinkPad T430 | Replaced by Dell 7490 #2 | — |
 
 ### Switch Specifications
 
@@ -257,9 +257,7 @@ Navigate to `VLAN → 802.1Q VLAN` and create each VLAN using the form:
 | VLAN ID | `10` |
 | VLAN Name | `MGMT` |
 | Tagged Ports | Port 1 |
-| Untagged Ports | Port 7 |
-
-> Puerto 7 untagged para el T430 (servidor de monitoreo dedicado, 10.10.10.10). Actualizado Junio 2026.
+| Untagged Ports | None |
 
 ---
 
@@ -270,9 +268,9 @@ Navigate to `VLAN → 802.1Q VLAN` and create each VLAN using the form:
 | VLAN ID | `20` |
 | VLAN Name | `PROD` |
 | Tagged Ports | Port 1 |
-| Untagged Ports | Ports 2, 3, 4, 5, 6 |
+| Untagged Ports | Ports 2, 3 |
 
-> Puertos 2-6 para los 5 nodos K3s: Dell 7490 #1 (ctrl-plane), Dell 5480 (wkr2), Dell 7490 #2 (wkr1), T440p (wkr4 storage), P52 (wkr3 ML). Actualizado Junio 2026.
+> Ports 2 and 3 are untagged because the T440p and T430 are standard Linux servers that do not send 802.1Q tagged frames. The switch adds/removes tags transparently.
 
 ---
 
@@ -322,13 +320,13 @@ Navigate to `VLAN → 802.1Q VLAN` and create each VLAN using the form:
 
 ---
 
-### Final VLAN Table — Estado actual (Junio 2026) ✅
+### Final VLAN Table
 
 | VLAN | Name | Member Ports | Tagged Ports | Untagged Ports |
 |---|---|---|---|---|
 | 1 | Default | 1-8 | — | 1-8 |
-| 10 | MGMT | 1, 7 | 1 | 7 |
-| 20 | PROD | 1-6 | 1 | 2-6 |
+| 10 | MGMT | 1 | 1 | — |
+| 20 | PROD | 1-3 | 1 | 2-3 |
 | 30 | DEV | 1 | 1 | — |
 | 40 | STORAGE | 1 | 1 | — |
 | 50 | DMZ | 1 | 1 | — |
@@ -342,18 +340,18 @@ Navigate to `VLAN → 802.1Q PVID Setting`
 
 The PVID (Port VLAN ID) determines which VLAN **untagged ingress traffic** is assigned to.
 
-### PVID Settings — Estado actual (Junio 2026) ✅
+### PVID Settings
 
-| Port | PVID | Device | Reason |
-|---|---|---|---|
-| Port 1 | 1 | M720q trunk | Trunk port — M720q sends pre-tagged traffic |
-| Port 2 | 20 | Dell 7490 #1 | K3s control-plane → VLAN 20 PROD |
-| Port 3 | 20 | Dell 5480 | K3s worker2 → VLAN 20 PROD |
-| Port 4 | 20 | Dell 7490 #2 | K3s worker1 → VLAN 20 PROD |
-| Port 5 | 20 | T440p storage | K3s worker4 → VLAN 20 PROD |
-| Port 6 | 20 | P52 ML/GPU | K3s worker3 → VLAN 20 PROD |
-| Port 7 | 10 | T430 monitoring | Monitoring server → VLAN 10 MGMT |
-| Port 8 | 90 | Parrot OS | Red team → VLAN 90 PENTEST |
+| Port | PVID | Reason |
+|---|---|---|
+| Port 1 | 1 | Trunk port — M720q sends pre-tagged traffic |
+| Port 2 | 20 | T440p untagged traffic → VLAN 20 PROD |
+| Port 3 | 20 | T430 untagged traffic → VLAN 20 PROD |
+| Port 4 | 1 | Free port |
+| Port 5 | 1 | Free port |
+| Port 6 | 1 | Free port |
+| Port 7 | 1 | Free port |
+| Port 8 | 90 | Parrot OS untagged traffic → VLAN 90 PENTEST |
 
 ### How to Configure
 

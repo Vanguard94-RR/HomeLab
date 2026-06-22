@@ -1,11 +1,11 @@
 #!/bin/bash
 # =============================================================================
 # HomeLab — K3s Node Pre-Fix Script
-# Version : 1.2 (final)
+# Version : 1.3 (final)
 # Usage   : ./homelab-k3s-prefix.sh [--role master|worker] [--hostname NAME] [--dry-run]
-# Example : ./homelab-k3s-prefix.sh --role master --hostname t440p-server
+# Example : ./homelab-k3s-prefix.sh --role master --hostname dell-7490-1
 # Idempotent: safe to run multiple times, only applies missing fixes
-# Verified : Fedora 42 · t440p-server (master) · t430 (worker) · May 2026
+# Verified : Fedora 42 · dell-7490-1 (master) · dell-7490-2 · t440p-storage · June 2026
 # =============================================================================
 
 # ── Defaults ──────────────────────────────────────────────────────────────────
@@ -81,7 +81,7 @@ NEW_HOSTNAME="${NEW_HOSTNAME:-$(echo "$CURRENT_HOSTNAME" | tr '[:upper:]' '[:low
 
 echo ""
 echo "============================================================"
-echo "  HomeLab -- K3s Node Pre-Fix"
+echo "  HomeLab -- K3s Node Pre-Fix v1.3"
 echo "  Role       : $NODE_ROLE"
 echo "  Current HN : $CURRENT_HOSTNAME"
 echo "  Target HN  : $NEW_HOSTNAME"
@@ -100,7 +100,6 @@ else
   run "Set hostname to $NEW_HOSTNAME" hostnamectl set-hostname "$NEW_HOSTNAME"
 fi
 
-# Ensure hostname is in /etc/hosts
 PRIMARY_IP=$(ip route | grep default | awk '{print $5}' | head -1 | \
   xargs -I{} ip addr show {} 2>/dev/null | grep 'inet ' | awk '{print $2}' | \
   cut -d/ -f1 | head -1)
@@ -127,7 +126,6 @@ else
   run "Disable swap immediately" swapoff -a
 fi
 
-# Remove swap entries from /etc/fstab (idempotent)
 if grep -qE '^\s*[^#].*\sswap\s' /etc/fstab 2>/dev/null; then
   run "Remove swap from /etc/fstab" sed -i '/\bswap\b/s/^/#/' /etc/fstab
   info "Swap entries commented out in /etc/fstab"
@@ -135,13 +133,49 @@ else
   skip "No active swap entries in /etc/fstab"
 fi
 
-# Disable zram swap if present (common on Fedora)
 if systemctl is-active --quiet zram-swap 2>/dev/null; then
   run "Disable zram-swap service" systemctl disable --now zram-swap
 elif systemctl is-active --quiet systemd-zram-setup@zram0 2>/dev/null; then
   run "Disable systemd zram swap" systemctl disable --now systemd-zram-setup@zram0
 else
   skip "zram swap service not active"
+fi
+
+# =============================================================================
+# FIX 2.5 — LVM ROOT EXPANSION
+# =============================================================================
+echo ""
+echo "[ FIX 2.5 -- LVM ROOT EXPANSION ]"
+
+ROOT_DEV=$(findmnt -n -o SOURCE / 2>/dev/null | head -1)
+ROOT_VG=$(lvs --noheadings -o vg_name "$ROOT_DEV" 2>/dev/null | xargs)
+ROOT_LV=$(lvs --noheadings -o lv_name "$ROOT_DEV" 2>/dev/null | xargs)
+
+if [ -z "$ROOT_VG" ] || [ -z "$ROOT_LV" ]; then
+  info "Root is not on LVM -- skipping LVM expansion"
+else
+  VG_FREE_GB=$(vgs --noheadings --units g -o vg_free "$ROOT_VG" 2>/dev/null \
+    | xargs | sed 's/g//' | cut -d. -f1)
+  LV_SIZE_GB=$(lvs --noheadings --units g -o lv_size "$ROOT_DEV" 2>/dev/null \
+    | xargs | sed 's/g//' | cut -d. -f1)
+
+  info "VG: $ROOT_VG | LV: $ROOT_LV | LV size: ${LV_SIZE_GB}GB | VG free: ${VG_FREE_GB}GB"
+
+  if [ "${VG_FREE_GB:-0}" -gt 5 ]; then
+    run "Extend LV to use all free space (${VG_FREE_GB}GB available)" \
+      lvextend -l +100%FREE "/dev/$ROOT_VG/$ROOT_LV"
+
+    FS_TYPE=$(findmnt -n -o FSTYPE / 2>/dev/null)
+    if [ "$FS_TYPE" = "xfs" ]; then
+      run "Grow XFS filesystem on /" xfs_growfs /
+    elif [ "$FS_TYPE" = "ext4" ]; then
+      run "Grow ext4 filesystem" resize2fs "/dev/$ROOT_VG/$ROOT_LV"
+    else
+      info "Unknown filesystem type: $FS_TYPE -- resize manually after script"
+    fi
+  else
+    skip "VG free space <= 5GB (${VG_FREE_GB:-0}GB) -- nothing to expand"
+  fi
 fi
 
 # =============================================================================
@@ -159,25 +193,22 @@ else
   if [ "$SELINUX_MODE" = "Disabled" ]; then
     skip "SELinux disabled -- no policy needed"
   else
-    # Install container-selinux if missing
     if rpm -q container-selinux &>/dev/null; then
       skip "container-selinux already installed"
     else
       run "Install container-selinux" dnf install -y container-selinux
     fi
 
-    # Install selinux-policy-base if missing
     if rpm -q selinux-policy-base &>/dev/null; then
       skip "selinux-policy-base already installed"
     else
       run "Install selinux-policy-base" dnf install -y selinux-policy-base
     fi
 
-    # Install k3s-selinux policy
     if rpm -q k3s-selinux &>/dev/null; then
       skip "k3s-selinux policy already installed: $(rpm -q k3s-selinux)"
     else
-      info "Installing k3s-selinux from GitHub releases (el9 — compatible with Fedora)"
+      info "Installing k3s-selinux from GitHub releases (el9 -- compatible with Fedora)"
       run "Download k3s-selinux RPM" curl -fsSL -o /tmp/k3s-selinux.rpm \
         "https://github.com/k3s-io/k3s-selinux/releases/download/v1.6.latest.1/k3s-selinux-1.6-1.el9.noarch.rpm"
       if [ -f /tmp/k3s-selinux.rpm ]; then
@@ -200,23 +231,21 @@ echo "[ FIX 4 -- FIREWALLD ]"
 if ! systemctl is-active --quiet firewalld 2>/dev/null; then
   skip "firewalld not running -- no port configuration needed"
 else
-  info "firewalld is active -- configuring K3s ports"
-
-  # Ports required for K3s
-  # master: 6443 (API), 10250 (kubelet), 8472 (flannel VXLAN), 51820 (WireGuard)
-  # worker: 10250 (kubelet), 8472 (flannel VXLAN), 51820 (WireGuard)
+  info "firewalld is active -- configuring K3s + Cilium ports"
 
   declare -A PORTS
   PORTS["6443/tcp"]="K3s API server"
-  PORTS["10250/tcp"]="K3s kubelet metrics"
-  PORTS["8472/udp"]="Flannel VXLAN overlay"
-  PORTS["51820/udp"]="WireGuard VPN (optional)"
+  PORTS["10250/tcp"]="K3s kubelet"
+  PORTS["8472/udp"]="VXLAN overlay (Cilium)"
+  PORTS["4240/tcp"]="Cilium health check"
+  PORTS["4244/tcp"]="Cilium Hubble"
+  PORTS["4245/tcp"]="Cilium Hubble Relay"
+  PORTS["51871/udp"]="WireGuard (Cilium)"
   PORTS["2379/tcp"]="etcd client (master only)"
   PORTS["2380/tcp"]="etcd peer (master only)"
 
   for PORT_PROTO in "${!PORTS[@]}"; do
     DESC="${PORTS[$PORT_PROTO]}"
-    # Skip etcd ports for worker nodes
     if [ "$NODE_ROLE" = "worker" ] && \
        { [ "$PORT_PROTO" = "2379/tcp" ] || [ "$PORT_PROTO" = "2380/tcp" ]; }; then
       info "Skipping $PORT_PROTO ($DESC) -- worker node"
@@ -231,19 +260,27 @@ else
     fi
   done
 
-  # Allow pod-to-pod traffic (CNI)
   if firewall-cmd --list-all --permanent 2>/dev/null | grep -q "masquerade: yes"; then
     skip "Masquerade already enabled"
   else
     run "Enable masquerade for pod routing" firewall-cmd --permanent --add-masquerade
   fi
 
-  # Reload firewalld to apply changes
+  # Cilium requires trusted zones for pod CIDRs
+  for CIDR in 10.42.0.0/16 10.43.0.0/16; do
+    if firewall-cmd --list-all --zone=trusted --permanent 2>/dev/null | grep -q "$CIDR"; then
+      skip "CIDR $CIDR already in trusted zone"
+    else
+      run "Add $CIDR to trusted zone (pod/service CIDR)" \
+        firewall-cmd --permanent --zone=trusted --add-source="$CIDR"
+    fi
+  done
+
   run "Reload firewalld" firewall-cmd --reload
 fi
 
 # =============================================================================
-# FIX 5 — KERNEL MODULES (pre-load for faster K3s start)
+# FIX 5 — KERNEL MODULES
 # =============================================================================
 echo ""
 echo "[ FIX 5 -- KERNEL MODULES ]"
@@ -256,7 +293,6 @@ for MOD in br_netfilter overlay ip_conntrack; do
   fi
 done
 
-# Make modules persistent across reboots
 MODULES_FILE="/etc/modules-load.d/k3s.conf"
 if [ -f "$MODULES_FILE" ] && grep -q "br_netfilter" "$MODULES_FILE" 2>/dev/null; then
   skip "Kernel modules already configured for persistence: $MODULES_FILE"
@@ -266,7 +302,7 @@ else
 fi
 
 # =============================================================================
-# FIX 6 — SYSCTL PARAMS
+# FIX 6 — SYSCTL
 # =============================================================================
 echo ""
 echo "[ FIX 6 -- SYSCTL ]"
@@ -284,10 +320,9 @@ SYSCTL"
   run "Apply sysctl params" sysctl --system
 fi
 
-# Verify ip_forward
 IP_FWD=$(cat /proc/sys/net/ipv4/ip_forward 2>/dev/null)
 if [ "$IP_FWD" = "1" ]; then
-  skip "ip_forward already enabled: $IP_FWD"
+  skip "ip_forward already enabled"
 else
   run "Enable ip_forward immediately" sysctl -w net.ipv4.ip_forward=1
 fi
@@ -324,16 +359,15 @@ echo "  Applied : $APPLIED changes"
 echo "  Skipped : $SKIPPED (already configured)"
 echo "  Failed  : $FAILED"
 echo ""
+echo "  Disk after expansion:"
+df -h / | awk 'NR==2{print "  "$0}'
+echo ""
 
 if [ "$FAILED" -gt 0 ]; then
   echo "  STATUS: [FAIL] $FAILED fix(es) failed -- review output above"
-  echo ""
-  echo "  Next: fix failures manually, then re-run this script"
   EXIT_CODE=2
 elif [ "$DRY_RUN" = "1" ]; then
   echo "  STATUS: [DRY-RUN] No changes applied"
-  echo ""
-  echo "  Next: run without --dry-run to apply changes"
   EXIT_CODE=0
 else
   echo "  STATUS: [PASS] All fixes applied successfully"
@@ -342,9 +376,14 @@ else
   echo "    1. Re-run pre-check: ./homelab-k3s-precheck.sh --role $NODE_ROLE"
   echo "    2. Install K3s:"
   if [ "$NODE_ROLE" = "master" ]; then
-    echo "       curl -sfL https://get.k3s.io | sh -"
+    echo "       curl -sfL https://get.k3s.io | \\"
+    echo "         INSTALL_K3S_EXEC=\"--flannel-backend=none --disable-network-policy \\"
+    echo "           --disable=traefik --selinux \\"
+    echo "           --tls-san 10.10.20.101\" sh -"
   else
-    echo "       curl -sfL https://get.k3s.io | K3S_URL=https://MASTER_IP:6443 K3S_TOKEN=TOKEN sh -"
+    echo "       curl -sfL https://get.k3s.io | \\"
+    echo "         K3S_URL=https://10.10.20.101:6443 \\"
+    echo "         K3S_TOKEN=<TOKEN> sh -"
   fi
   EXIT_CODE=0
 fi

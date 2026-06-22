@@ -543,45 +543,27 @@ bridge vlan show dev enp1s0f0 | wc -l
 
 ---
 
-## 10. Estado actual y pendientes (Junio 2026)
+## 10. Roadmap — Pending Items
 
-### 10.1 COMPLETADO — K3s nodes y T430 conectados ✅
+### 10.1 Assign VLANs to K3s Nodes When Connected
 
-**Estado real del switch (Junio 2026):**
-
-```
-P1 → Trunk (M720q vmbr1) — tagged all VLANs
-P2 → VLAN 20 PROD (Dell 7490 #1 — K3s control-plane 10.10.20.100)
-P3 → VLAN 20 PROD (Dell 5480 — K3s worker2 10.10.20.102)
-P4 → VLAN 20 PROD (Dell 7490 #2 — K3s worker1 10.10.20.101)
-P5 → VLAN 20 PROD (T440p — K3s worker4 storage 10.10.20.104)
-P6 → VLAN 20 PROD (P52 — K3s worker3 ML 10.10.20.103)
-P7 → VLAN 10 MGMT (T430 monitoring 10.10.10.10)
-P8 → VLAN 90 PENTEST (Parrot OS)
-```
-
-### 10.2 COMPLETADO — pfSense LAN migrada a vtnet1.10 ✅
-
-La interfaz LAN fue migrada de `vtnet1` (untagged) a `vtnet1.10` (VLAN 10 tagged) para que el T430 en el puerto 7 (VLAN 10) pueda alcanzar pfSense correctamente.
+When T440p (master) and T430 (worker1) are connected to the switch:
 
 ```bash
-# pfSense Interface Assignments después del cambio:
-# LAN → vtnet1.10 (VLAN 10) → 10.10.10.1/24
-# Verificar en consola pfSense: opción 1 (interfaces list)
+# No changes needed to /etc/network/interfaces
+# The switch ports are already configured: P2 → VLAN 20, P3 → VLAN 20
+# Nodes will receive DHCP from pfSense VLAN 20 (10.10.20.100–200) automatically
 ```
 
-**Impacto:** VMs/LXCs internas (AdGuard LXC 101, Windows VM 199) no se afectan — 
-su VLAN tag es manejado internamente por el bridge Proxmox antes de llegar al switch.
+### 10.2 Add P52 as Worker Node 2
 
-### 10.3 COMPLETADO — T430 monitoring server desplegado ✅
-
-```
-T430: 10.10.10.10/24 · VLAN 10 · switch puerto 7 · PVID 10
-Stack: Prometheus+Grafana+Loki+Tempo+Alertmanager · Podman Compose
-Acceso: http://grafana.mgmt:3000
+```bash
+# Connect P52 to an available switch port (P4–P7)
+# Configure that port on TL-SG108E: PVID=20, untagged VLAN 20
+# P52 will receive IP from pfSense DHCP VLAN 20
 ```
 
-### 10.4 Futuro — Upgrade Windows VM NIC a VirtIO
+### 10.3 Future — Upgrade Windows VM NIC to VirtIO
 
 ```bash
 # Step 1: Mount VirtIO ISO in VM 199
@@ -595,7 +577,7 @@ qm set 199 --net0 virtio,bridge=vmbr1,tag=10,firewall=0
 qm start 199
 ```
 
-### 10.5 Futuro — VLAN 40 Storage Isolation
+### 10.4 Future — VLAN 40 Storage Isolation
 
 When K3s Longhorn is deployed, nodes will need an additional interface in VLAN 40 for storage replication traffic:
 
@@ -677,4 +659,53 @@ pct set CTID --net0 name=eth0,bridge=vmbr1,tag=VLAN_ID,ip=10.10.VLAN.X/24,gw=10.
 
 ---
 
-*Document v1.0 — Generated from live lab session · Proxmox VE 9.1.1 · Lenovo M720q · May 2026*
+---
+
+## Appendix C — Disk Upgrade M720q (Junio 2026)
+
+### Plan
+
+```
+480GB NVMe actual  → reemplazado por 1TB NVMe
+480GB NVMe libre   → P52 slot secundario (Longhorn NVMe + Ollama)
+```
+
+### Proceso de clonación
+
+Ver documento completo: `HomeLab-DiskUpgrade-M720q.md`
+
+**Resumen del proceso:**
+
+```bash
+# 1. Apagar TODAS las VMs antes del dd (CRÍTICO)
+pct stop 101 && qm stop 100 && qm stop 199
+
+# 2. Conectar 1TB via USB → verificar como /dev/sda
+lsblk | grep -E "sda|nvme"
+
+# 3. Clonar
+dd if=/dev/nvme0n1 of=/dev/sda bs=4M status=progress conv=fsync
+
+# 4. Reparar GPT
+sgdisk -e /dev/sda && sgdisk -v /dev/sda
+
+# 5. Swap físico → arrancar desde 1TB
+
+# 6. Expandir LVM
+lvextend -l +100%FREE /dev/pve/data
+```
+
+### ⚠️ Lección crítica aprendida
+
+El intento 1 falló porque el `dd` se ejecutó con las VMs corriendo. El thin pool de LVM escribe metadatos activamente y el clon queda con `transaction_id=0` en lugar del estado real. El thin pool no se puede activar y los discos de las VMs no son accesibles.
+
+**SIEMPRE apagar todas las VMs y LXCs antes de `dd` en Proxmox con thin pools.**
+
+### Estado actual (Junio 2026)
+
+- Intento 1: FALLIDO — dd con VMs corriendo → thin pool corrupto → revertido a 480GB
+- Intento 2: EN PROGRESO — VMs apagadas, dd corriendo a ~52MB/s
+
+---
+
+*Document v1.1 — Proxmox VE 9.1.1 · Lenovo M720q · Junio 2026 · Disk upgrade en progreso*
