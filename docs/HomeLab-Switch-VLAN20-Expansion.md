@@ -2,7 +2,7 @@
 
 **Version:** 1.0
 **Date:** May 2026
-**Status:** Proposed improvement — pending implementation
+**Status:** ⚠️ NO APLICABLE ACTUALMENTE — Puerto 7 ocupado por T430 monitoring. Ver HomeLab-Switch-Expansion-Plan.md para alternativas.
 **Scope:** TL-SG108 (unmanaged) · TL-SG108E port 7 · VLAN 20 PROD expansion
 **Prerequisites:** TL-SG108E 802.1Q configured · pfSense DHCP VLAN 20 active · K3s cluster running
 
@@ -24,6 +24,14 @@
 
 ---
 
+## ⚠️ Nota de Estado — Junio 2026
+
+Este plan asumía que el puerto 7 estaría disponible como uplink al TL-SG108 unmanaged. **Puerto 7 actualmente ocupado por T430 (monitoring server, VLAN 10).** El switch está completamente lleno. Ver `HomeLab-Switch-Expansion-Plan.md` para opciones actualizadas (Opción A recomendada: switch 16 puertos).
+
+K3s cluster INSTALADO — 3/5 nodos Ready. Los 2 nodos restantes (Dell 5480, P52) aún no han llegado.
+
+---
+
 ## 1. Problem Statement
 
 ### Current Switch Port Utilization
@@ -38,7 +46,7 @@ The TL-SG108E (managed, 8 ports) is nearly full after connecting all K3s cluster
 | 4 | Dell 7490 #2 (worker1) | VLAN 20 | Occupied |
 | 5 | T440p storage (worker4) | VLAN 20 | Occupied |
 | 6 | P52 ML/GPU (worker3) | VLAN 20 | Occupied |
-| 7 | — | — | **Available** |
+| 7 | T430 (Monitoring VLAN 10) | 10 | **OCUPADO — ✅ 10.10.10.10** |
 | 8 | Parrot OS (PENTEST) | VLAN 90 | Occupied |
 
 Only **1 free port** remains. Any future K3s worker node, development machine, or VLAN 20 device would have no port to connect to.

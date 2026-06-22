@@ -1,7 +1,7 @@
 # Enterprise HomeLab — pfSense Installation & Configuration Manual
 
-**Version:** 1.0  
-**Date:** May 2026  
+**Version:** 2.0  
+**Date:** June 2026  
 **Scope:** pfSense CE 2.7.2 · VM on Proxmox · Inter-VLAN Routing · DHCP · Firewall Rules  
 **Prerequisites:** Proxmox VE 9.1.1 · TL-SG108E configured with 802.1Q VLANs · AdGuard Home LXC running
 
@@ -93,7 +93,7 @@ qm config 100
 | VM ID | 100 | |
 | Name | pfsense | |
 | Cores | 2 vCPU | `cpu: host` — uses all host CPU features |
-| Memory | 2048 MB | Reduced from 4608MB (see Section 5) |
+| Memory | 1024 MB | Reducido de 2048MB → 1024MB Junio 2026 (ver Section 5) |
 | Disk | 32GB (local-lvm) | ide0 |
 | net0 | vtnet0 → vmbr0 | WAN — ISP network 192.168.1.x |
 | net1 | vtnet1 → vmbr1 | LAN — VLAN trunk to switch |
@@ -595,18 +595,13 @@ Should show automatic rules translating all internal subnets (`10.10.x.0/24`) to
 System → User Manager → Edit admin → Password
 ```
 
-### AdGuard Home Migration
+### AdGuard Home Migration — ✅ COMPLETADO
 
-Once pfSense is the DHCP server for all VLANs, migrate AdGuard from `192.168.1.100` to `10.10.10.3` on VLAN 10:
+AdGuard migrado a VLAN 10 (10.10.10.3) en sesiones anteriores. LXC dual-homed:
+- eth0: 10.10.10.3/24 (VLAN 10 — primario)
+- eth1: 192.168.1.100/24 (Telmex LAN — fallback)
 
-```bash
-# From Proxmox shell
-pct stop 101
-pct set 101 --net0 name=eth0,bridge=vmbr1,tag=10,ip=10.10.10.3/24,gw=10.10.10.1
-pct start 101
-```
-
-Then update pfSense DHCP DNS to `10.10.10.3` for all VLANs.
+DHCP en todas las VLANs distribuye `10.10.10.3` como DNS.
 
 ### WireGuard VPN
 
@@ -620,13 +615,19 @@ VPN → WireGuard → Add Tunnel
 - Tunnel network: `10.10.100.0/24`
 - Firewall rule: Allow WireGuard clients to LAN
 
-### K3s Nodes (T440p + T430)
+### K3s Cluster — ✅ COMPLETADO (Junio 2026)
 
-With pfSense providing DHCP on VLAN 20:
-1. Connect T440p to switch port 2 — receives IP in `10.10.20.x`
-2. Connect T430 to switch port 3 — receives IP in `10.10.20.x`
-3. Install Fedora Server minimal on both
-4. Deploy K3s control-plane (T440p) and worker (T430)
+Cluster K3s v1.35.5+k3s1 instalado y operativo en VLAN 20:
+
+| Nodo | IP | Rol | Estado |
+|---|---|---|---|
+| Dell 7490 #1 | 10.10.20.101 | control-plane (temporal) | ✅ Ready |
+| Dell 7490 #2 | 10.10.20.102 | worker1 | ✅ Ready |
+| T440p | 10.10.20.104 | worker4 storage | ✅ Ready |
+| Dell 5480 | 10.10.20.100 | CP permanente | ⏳ Llega después |
+| P52 | 10.10.20.103 | worker3 ML/GPU | ⏳ Llega después |
+
+IPs estáticas configuradas via NetworkManager (no DHCP). Stack instalado: Cilium v1.19.5, Longhorn v1.12.0, ArgoCD v9.6.0.
 
 ### DMZ Firewall Rules
 
@@ -755,4 +756,4 @@ Acceso: `http://grafana.mgmt:3000` → Dashboards → pfSense Firewall — FreeB
 
 ---
 
-*Document v2.1 — pfSense CE 2.7.2 · Proxmox 9.1.1 · M720q · RAM 1GB · QEMU Guest Agent ✅ · node_exporter ✅ · Junio 2026*
+*Document v2.0 — pfSense CE 2.7.2 · Proxmox 9.1.1 · M720q · RAM 1GB · QEMU Guest Agent ✅ · node_exporter ✅ · K3s DEPLOYED ✅ · Junio 2026*

@@ -1,7 +1,7 @@
 # Enterprise HomeLab — Proxmox VE VLAN Persistence Manual
 
-**Version:** 1.0
-**Date:** May 2026
+**Version:** 1.1
+**Date:** June 2026
 **Scope:** Proxmox VE · Linux Bridge · 802.1Q VLAN Persistence · `/etc/network/interfaces`
 **Environment:** Lenovo M720q · Proxmox VE 9.1.1 · Kernel 6.17.2-1-pve · Intel I350-T4 NIC
 
@@ -545,22 +545,32 @@ bridge vlan show dev enp1s0f0 | wc -l
 
 ## 10. Roadmap — Pending Items
 
-### 10.1 Assign VLANs to K3s Nodes When Connected
+### 10.1 ✅ COMPLETADO — K3s Nodes Conectados y Cluster Instalado (Junio 2026)
 
-When T440p (master) and T430 (worker1) are connected to the switch:
+Todos los nodos K3s conectados al switch con IPs estáticas en VLAN 20:
 
+| Puerto | Nodo | IP VLAN 20 | Estado |
+|---|---|---|---|
+| P2 | Dell 7490 #1 (CP) | 10.10.20.101 | ✅ Ready |
+| P3 | Dell 5480 (futuro CP) | 10.10.20.100 | ⏳ Llega después |
+| P4 | Dell 7490 #2 (worker1) | 10.10.20.102 | ✅ Ready |
+| P5 | T440p (worker4) | 10.10.20.104 | ✅ Ready |
+| P6 | P52 (worker3 ML) | 10.10.20.103 | ⏳ Llega después |
+| P7 | T430 (monitoring) | 10.10.10.10 | ✅ VLAN 10 |
+| P8 | Parrot OS | DHCP 10.10.90.x | VLAN 90 |
+
+IPs configuradas como estáticas via NetworkManager (no DHCP). K3s v1.35.5+k3s1 instalado. Stack: Cilium v1.19.5, Longhorn v1.12.0, ArgoCD v9.6.0.
+
+### 10.2 P52 como Worker3 ML/GPU — ⏳ Pendiente llegada
+
+Cuando llegue P52:
 ```bash
-# No changes needed to /etc/network/interfaces
-# The switch ports are already configured: P2 → VLAN 20, P3 → VLAN 20
-# Nodes will receive DHCP from pfSense VLAN 20 (10.10.20.100–200) automatically
-```
-
-### 10.2 Add P52 as Worker Node 2
-
-```bash
-# Connect P52 to an available switch port (P4–P7)
-# Configure that port on TL-SG108E: PVID=20, untagged VLAN 20
-# P52 will receive IP from pfSense DHCP VLAN 20
+# Ya conectado a Port 6 (PVID=20, untagged VLAN 20)
+# Instalar Fedora 42 + configurar IP estática 10.10.20.103
+# Ejecutar desde P53:
+bash deploy.sh --only-workers  # agregar P52 a cluster.env primero
+# Instalar 480GB NVMe en slot secundario:
+# /var/lib/longhorn (350GB) + /var/lib/ollama (130GB)
 ```
 
 ### 10.3 Future — Upgrade Windows VM NIC to VirtIO
@@ -703,9 +713,11 @@ El intento 1 falló porque el `dd` se ejecutó con las VMs corriendo. El thin po
 
 ### Estado actual (Junio 2026)
 
-- Intento 1: FALLIDO — dd con VMs corriendo → thin pool corrupto → revertido a 480GB
-- Intento 2: EN PROGRESO — VMs apagadas, dd corriendo a ~52MB/s
+- Intento 1: ❌ FALLIDO — dd con VMs corriendo → thin pool corrupto → revertido a 480GB
+- Intento 2: ✅ COMPLETADO — VMs apagadas, dd completado exitosamente (~36-52MB/s)
+- Verificación: PV legible, EFI correcto, MBR válido
+- **Pendiente:** swap físico del disco (ventana de mantenimiento programada)
 
 ---
 
-*Document v1.1 — Proxmox VE 9.1.1 · Lenovo M720q · Junio 2026 · Disk upgrade en progreso*
+*Document v1.1 — Proxmox VE 9.1.1 · Lenovo M720q · Junio 2026 · K3s DEPLOYED ✅ · Disk clone ✅ · Swap físico pendiente*

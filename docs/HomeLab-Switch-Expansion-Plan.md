@@ -3,7 +3,7 @@
 **Version:** 1.1
 **Date:** June 2026
 **Scope:** TL-SG108E · TL-SG108 (unmanaged) · K3s cluster VLAN 20 migration
-**Status:** ⚠️ REQUIERE REVISIÓN — Puerto 7 ahora ocupado por T430 (monitoring server)
+**Status:** ✅ REVISADO — Todos los puertos en uso. K3s instalado. Opción C activa.
 
 ---
 
@@ -19,12 +19,12 @@ El T430 fue desplegado como servidor de monitoreo dedicado (Prometheus + Grafana
 
 ```
 Port 1  │ Trunk      │ M720q (vmbr1) — tagged all VLANs
-Port 2  │ VLAN 20    │ Dell 7490 #1 — K3s control-plane   10.10.20.100
-Port 3  │ VLAN 20    │ Dell 5480    — K3s worker2         10.10.20.102
-Port 4  │ VLAN 20    │ Dell 7490 #2 — K3s worker1         10.10.20.101
-Port 5  │ VLAN 20    │ T440p        — K3s worker4 storage 10.10.20.104
-Port 6  │ VLAN 20    │ P52          — K3s worker3 ML/GPU  10.10.20.103
-Port 7  │ VLAN 10    │ T430 monitoring — 10.10.10.10      ← OCUPADO
+Port 2  │ VLAN 20 ✅ │ Dell 7490 #1 — K3s CP temporal     10.10.20.101 ✅ Ready
+Port 3  │ VLAN 20 ⏳ │ Dell 5480    — K3s CP permanente   10.10.20.100 ⏳ Llega después
+Port 4  │ VLAN 20 ✅ │ Dell 7490 #2 — K3s worker1         10.10.20.102 ✅ Ready
+Port 5  │ VLAN 20 ✅ │ T440p        — K3s worker4 storage 10.10.20.104 ✅ Ready
+Port 6  │ VLAN 20 ⏳ │ P52          — K3s worker3 ML/GPU  10.10.20.103 ⏳ Llega después
+Port 7  │ VLAN 10 ✅ │ T430 monitoring — 10.10.10.10      ✅ OCUPADO
 Port 8  │ VLAN 90    │ Parrot OS    — PENTEST
 ```
 
@@ -52,7 +52,7 @@ Si P52 tiene dos interfaces de red (thunderbolt dock + integrada), una puede act
 
 Con 5 nodos K3s en puertos 2-6 del TL-SG108E, el cluster tiene capacidad suficiente para el roadmap actual. La expansión con TL-SG108 es una mejora de capacidad, no un bloqueante.
 
-**Recomendación actual:** Opción C hasta que el cluster K3s esté instalado y funcionando. Evaluar Opción A si se agregan más máquinas al lab.
+**Estado Junio 2026:** K3s INSTALADO y funcionando ✅. Opción C activa. Evaluar **Opción A** (switch 16 puertos ~$40-60 USD) cuando lleguen Dell 5480 y P52 y se necesite más expansión.
 
 ---
 

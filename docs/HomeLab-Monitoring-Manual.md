@@ -33,7 +33,7 @@
 
 | Alerta | Estado | Razón |
 |---|---|---|
-| NodeDown (4) | 🔴 FIRING | K3s no instalado — esperado |
+| NodeDown (4) | ⚠️ PENDIENTE | K3s INSTALADO — targets prometheus.yml aún apuntan a IPs antiguas (ver Sección 13) |
 | AdGuardDown | ✅ Resuelta | adguard-exporter operativo |
 | ProxmoxDown | ✅ Resuelta | pve_exporter operativo |
 | HighCPU/Memory/Disk | ✅ Inactivas | Lab saludable |
@@ -271,7 +271,7 @@ ip addr show enp0s25
 
 ping -c 3 10.10.10.1    # pfSense
 ping -c 3 10.10.10.3    # AdGuard
-ping -c 3 10.10.20.100  # K3s master (a través de pfSense)
+ping -c 3 10.10.20.101  # K3s CP temporal dell-7490-1 (a través de pfSense)
 ```
 
 ### 3.3 T430 en VLAN 10 MGMT
@@ -654,39 +654,35 @@ scrape_configs:
   - job_name: k3s-nodes
     static_configs:
       - targets:
-          - "10.10.20.100:9100"
-          - "10.10.20.101:9100"
-          - "10.10.20.102:9100"
-          - "10.10.20.103:9100"
-          - "10.10.20.104:9100"
+          - "10.10.20.101:9100"   # dell-7490-1 (CP temporal) ✅ RUNNING
+          - "10.10.20.102:9100"   # dell-7490-2 (worker1)    ✅ RUNNING
+          - "10.10.20.104:9100"   # t440p-storage (worker4)  ✅ RUNNING
+          # Pendientes (llegan después):
+          # - "10.10.20.100:9100" # dell-5480 (CP permanente) ⏳
+          # - "10.10.20.103:9100" # p52 (worker3 ML/GPU)     ⏳
         labels:
           cluster: k3s-homelab
     relabel_configs:
       - source_labels: [__address__]
-        regex: "10.10.20.100:.*"
+        regex: "10.10.20.101:.*"
         target_label: node
         replacement: dell-7490-1
       - source_labels: [__address__]
-        regex: "10.10.20.101:.*"
-        target_label: node
-        replacement: dell-7490-2
-      - source_labels: [__address__]
         regex: "10.10.20.102:.*"
         target_label: node
-        replacement: dell-5480
-      - source_labels: [__address__]
-        regex: "10.10.20.103:.*"
-        target_label: node
-        replacement: p52
+        replacement: dell-7490-2
       - source_labels: [__address__]
         regex: "10.10.20.104:.*"
         target_label: node
         replacement: t440p-storage
+      # Pendientes:
+      # - regex: "10.10.20.100:.*" → dell-5480 (llega después)
+      # - regex: "10.10.20.103:.*" → p52 (llega después)
 
   # ── K3s kube-state-metrics ────────────────────────────────────────────
   - job_name: kube-state-metrics
     static_configs:
-      - targets: ["10.10.20.100:8080"]
+      - targets: ["10.10.20.101:8080"]   # dell-7490-1 CP temporal
         labels:
           cluster: k3s-homelab
 
@@ -697,14 +693,14 @@ scrape_configs:
       insecure_skip_verify: true
     bearer_token_file: /etc/prometheus/k3s-token
     static_configs:
-      - targets: ["10.10.20.100:6443"]
+      - targets: ["10.10.20.101:6443"]   # dell-7490-1 CP temporal
         labels:
           cluster: k3s-homelab
 
   # ── Longhorn ──────────────────────────────────────────────────────────
   - job_name: longhorn
     static_configs:
-      - targets: ["10.10.20.100:9500"]
+      - targets: ["10.10.20.101:9500"]   # Longhorn — dell-7490-1
         labels:
           cluster: k3s-homelab
 
@@ -712,7 +708,7 @@ scrape_configs:
   - job_name: cilium-agent
     kubernetes_sd_configs:
       - role: pod
-        api_server: https://10.10.20.100:6443
+        api_server: https://10.10.20.101:6443   # dell-7490-1 CP temporal
         tls_config:
           insecure_skip_verify: true
         bearer_token_file: /etc/prometheus/k3s-token
@@ -726,7 +722,7 @@ scrape_configs:
   # ── Istio control plane ────────────────────────────────────────────────
   - job_name: istio-pilot
     static_configs:
-      - targets: ["10.10.20.100:15014"]
+      - targets: ["10.10.20.101:15014"]   # Istio — pendiente instalación
         labels:
           cluster: k3s-homelab
 
@@ -1196,10 +1192,12 @@ kubectl get pods -n monitoring
 
 ## 13. K3s Integration
 
+> **Estado Junio 2026:** K3s v1.35.5+k3s1 INSTALADO — 3 nodos Ready (dell-7490-1 10.10.20.101, dell-7490-2 10.10.20.102, t440p-storage 10.10.20.104). Longhorn v1.12.0 y Cilium v1.19.5 corriendo. **Pendiente:** actualizar prometheus.yml con targets correctos y configurar node_exporter DaemonSet.
+
 ### 13.1 Get K3s token for Prometheus
 
 ```bash
-# On Dell 7490 #1 (K3s master)
+# On Dell 7490 #1 (K3s control-plane temporal — 10.10.20.101)
 sudo cat /var/lib/rancher/k3s/server/node-token
 
 # On T430 — save token
@@ -1542,7 +1540,7 @@ df -h /opt/monitoring/loki
 | Service | URL | Port |
 |---|---|---|
 | Grafana | `http://grafana.mgmt:3000` | 3000 |
-| Prometheus | `http://prometheus.mgmt:9090` | 9090 |
+| Prometheus | `http://prometheus.mgmt:9091` | 9091 (9090 ocupado por Cockpit en Fedora) |
 | Alertmanager | `http://alertmanager.mgmt:9093` | 9093 |
 | Loki | `http://loki.mgmt:3100` | 3100 |
 | Tempo | `http://10.10.10.10:3200` | 3200 |

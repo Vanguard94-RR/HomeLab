@@ -1,7 +1,7 @@
 # Enterprise HomeLab — Installation & Configuration Manual
 
-**Version:** 2.1
-**Date:** May 2026
+**Version:** 2.2
+**Date:** June 2026
 **Scope:** Proxmox VE · AdGuard Home (Alpine LXC) · pfSense CE · Network DNS Configuration
 **Environment:** Lenovo M720q · Proxmox 9.1.1 · Alpine Linux 3.22 · AdGuard Home v0.107.76
 
@@ -49,7 +49,7 @@
 | Hypervisor host | Lenovo M720q | Proxmox VE node |
 | CPU | Intel Core i5-8500T (6C/6T) | — |
 | RAM | 32GB DDR4 SO-DIMM | — |
-| Storage | 512GB NVMe M.2 | OS + LXC storage |
+| Storage | 480GB NVMe M.2 (activo) + 1TB NVMe (clon listo, swap físico pendiente) | OS + LXC storage |
 | Network | Intel I350-T4 PCIe NIC (4 ports) | VLAN trunk to switch |
 | Switch | TP-Link TL-SG108E v6.0 | 802.1Q managed, 10.10.10.2 |
 | ISP Router | Nokia GPON (Telmex Infinitum) | Gateway 192.168.1.254 |
@@ -86,8 +86,7 @@
 
 | Software | Version |
 |---|---|
-| Proxmox VE | 9.1.1 |
-| Proxmox Kernel | 6.17.2-1-pve |
+| Proxmox VE | 9.1.1 (kernel 6.17.2-1-pve) | Junio 2026 activo |
 | Alpine Linux | 3.22 |
 | AdGuard Home | v0.107.76 |
 | pfSense CE | 2.7.2 |
@@ -517,25 +516,26 @@ Navigate to `Filters → DNS Rewrites → Add DNS rewrite`
 
 | Domain | Answer | Node |
 |---|---|---|
-| `dell-7490-1.lab` | `10.10.20.100` | K3s control-plane |
-| `dell-7490-2.lab` | `10.10.20.101` | K3s worker1 |
-| `dell-5480.lab` | `10.10.20.102` | K3s worker2 |
-| `p52.lab` | `10.10.20.103` | K3s worker3 ML/GPU |
-| `t440p-storage.lab` | `10.10.20.104` | K3s worker4 storage |
-| `k3s.mgmt` | `10.10.20.100` | K3s API endpoint |
+| `dell-7490-1.lab` | `10.10.20.101` | K3s control-plane temporal ✅ RUNNING |
+| `dell-7490-2.lab` | `10.10.20.102` | K3s worker1 ✅ RUNNING |
+| `dell-5480.lab` | `10.10.20.100` | K3s CP permanente (futuro) ⏳ |
+| `p52.lab` | `10.10.20.103` | K3s worker3 ML/GPU ⏳ |
+| `t440p-storage.lab` | `10.10.20.104` | K3s worker4 storage ✅ RUNNING |
+| `k3s.mgmt` | `10.10.20.101` | K3s API endpoint ✅ |
 
 **Future — K3s services (add after cluster is running):**
 
 | Domain | Answer | Service |
 |---|---|---|
-| `argocd.lab.internal` | MetalLB IP | ArgoCD UI |
-| `gitea.lab.internal` | MetalLB IP | Gitea SCM |
-| `harbor.lab.internal` | MetalLB IP | Harbor registry |
-| `hubble.lab.internal` | MetalLB IP | Cilium Hubble UI |
-| `kiali.lab.internal` | MetalLB IP | Istio Kiali |
-| `ollama.lab.internal` | MetalLB IP | Ollama ML (P52) |
+| `argocd.lab.internal` | 10.10.20.101:NodePort | ArgoCD UI (port-forward activo) |
+| `hubble.lab.internal` | 10.10.20.101:NodePort | Cilium Hubble UI (port-forward activo) |
+| `longhorn.lab.internal` | 10.10.20.101:NodePort | Longhorn UI (port-forward activo) |
+| `gitea.lab.internal` | MetalLB IP | Gitea SCM (pendiente) |
+| `harbor.lab.internal` | MetalLB IP | Harbor registry (pendiente) |
+| `kiali.lab.internal` | MetalLB IP | Istio Kiali (pendiente — Istio no instalado) |
+| `ollama.lab.internal` | MetalLB IP | Ollama ML P52 (pendiente llegada P52) |
 
-> The `*.lab.internal` entries will be added once MetalLB L2 announcements are configured and services have stable IPs.
+> K3s INSTALADO — Junio 2026. ArgoCD, Longhorn y Hubble UI están corriendo. Las entradas `*.lab.internal` se activarán cuando se configure el ingress controller y los servicios tengan IPs estables via LoadBalancer o NodePort.
 
 ### 5.6 Configure Client Settings
 
@@ -1020,15 +1020,19 @@ Apply without rebooting:
 ifreload -a
 ```
 
-### 11.2 Pending — Connect K3s Nodes to Switch
+### 11.2 ✅ COMPLETADO — K3s Nodes Conectados al Switch (Junio 2026)
 
-| Device | Switch Port | VLAN | Role |
-|---|---|---|---|
-| T440p (K3s master) | Port 2 | VLAN 20 | control-plane |
-| T430 (K3s worker1) | Port 3 | VLAN 20 | worker1 |
-| P52 (K3s worker2) | Port 4–7 | VLAN 20 | worker2 |
+| Device | Switch Port | VLAN | IP | Estado |
+|---|---|---|---|---|
+| Dell 7490 #1 (CP) | Port 2 | VLAN 20 | 10.10.20.101 (estática) | ✅ Ready |
+| Dell 5480 (futuro CP) | Port 3 | VLAN 20 | 10.10.20.100 (reservada) | ⏳ Llega después |
+| Dell 7490 #2 (worker1) | Port 4 | VLAN 20 | 10.10.20.102 (estática) | ✅ Ready |
+| T440p (worker4) | Port 5 | VLAN 20 | 10.10.20.104 (estática) | ✅ Ready |
+| P52 (worker3 ML) | Port 6 | VLAN 20 | 10.10.20.103 (reservada) | ⏳ Llega después |
 
-Once connected, DHCP on VLAN 20 will assign IPs with `10.10.10.3` as DNS automatically.
+IPs estáticas configuradas via NetworkManager (no DHCP). AdGuard distribuye `10.10.10.3` como DNS a través de pfSense en VLAN 20.
+
+**DNS Rewrites activos para el cluster K3s** — ver Sección 5.5.
 
 ### 11.3 Pending — Firewall Rules for DNS
 
@@ -1045,27 +1049,23 @@ Add explicit pfSense firewall rules to allow DNS traffic from all VLANs to AdGua
 | Destination Port | 53 |
 | Description | Allow DNS to AdGuard |
 
-### 11.4 Future — AdGuard Monitoring with Prometheus
+### 11.4 ✅ COMPLETADO — AdGuard Monitoring con Prometheus (Junio 2026)
 
-Once the K3s cluster is deployed, integrate AdGuard metrics:
+El `adguard-exporter` está corriendo como contenedor Podman en el T430 (10.10.10.10:9617).
 
-```bash
-# Inside the AdGuard LXC
-docker run -d \
-  -p 9617:9617 \
-  -e ADGUARD_HOSTNAME=10.10.10.3 \
-  -e ADGUARD_PORT=3000 \
-  -e ADGUARD_USERNAME=admin \
-  -e ADGUARD_PASSWORD=${SECRET} \
-  ebrianne/adguard-exporter
-```
+**Nota crítica:** El exporter NO corre en el LXC de AdGuard — corre en T430 y consulta AdGuard remotamente.
 
-Prometheus scrape config:
+Configuración activa en Prometheus:
 ```yaml
 - job_name: adguard
   static_configs:
-  - targets: ['10.10.10.3:9617']
+    - targets: ['10.10.10.10:9617']  # T430, NO la IP de AdGuard
+      labels:
+        instance: adguard
+        role: dns
 ```
+
+**Estado:** ✅ UP — visible en Prometheus y Grafana.
 
 ### 11.5 Future — Alertmanager Rules
 
@@ -1085,6 +1085,8 @@ groups:
     labels:
       severity: warning
 ```
+
+> **Estado Junio 2026:** Alerta `AdGuardDown` activa y funcionando. Se disparó una vez por target incorrecto (10.10.10.3:9617 en lugar de 10.10.10.10:9617) — corregido. Actualmente ✅ Resolved.
 
 ---
 
@@ -1182,4 +1184,4 @@ pfSense WAN              pfSense LAN → TL-SG108E
 
 ---
 
-*Document v2.0 — Generated from live lab session · Proxmox 9.1.1 · Lenovo M720q · May 2026*
+*Document v2.2 — Actualizado Junio 2026 · K3s cluster DEPLOYED · IPs VLAN 20 corregidas · adguard-exporter ✅ UP · DNS Rewrites K3s actualizados*

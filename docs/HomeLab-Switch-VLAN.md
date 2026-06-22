@@ -1,7 +1,7 @@
 # Enterprise HomeLab — Switch & VLAN Configuration Manual
 
-**Version:** 1.0  
-**Date:** May 2026  
+**Version:** 2.0  
+**Date:** June 2026  
 **Scope:** TP-Link TL-SG108E · 802.1Q VLANs · Proxmox vmbr1 trunk · Network segmentation  
 **Prerequisites:** Proxmox VE 9.1.1 installed · AdGuard Home LXC running (see previous manual)
 
@@ -73,7 +73,7 @@ Internet / ISP (Telmex Infinitum)
 | K3s worker3 ML/GPU | ThinkPad P52 | K3s agent — Port 6 | 10.10.20.103 (VLAN 20) — pendiente |
 | Monitoring | ThinkPad T430 | Prometheus+Grafana — Port 7 | 10.10.10.10 (VLAN 10) ✅ |
 | Pentesting | Parrot OS machine | Red team — Port 8 | VLAN 90 (10.10.90.x) |
-| RETIRED | ThinkPad T430 | Replaced by Dell 7490 #2 | — |
+| T430 | ThinkPad T430 | Monitoring server dedicado (VLAN 10) — Port 7 | 10.10.10.10 ✅ |
 
 ### Switch Specifications
 
@@ -94,13 +94,13 @@ Internet / ISP (Telmex Infinitum)
 | Port | Connected Device | VLAN | Mode | PVID |
 |---|---|---|---|---|
 | 1 | M720q (enp1s0f0) | 10,20,30,40,50,90 | **Tagged (trunk)** | 1 |
-| 2 | T440p (K3s master) | 20 | Untagged | 20 |
-| 3 | T430 (K3s worker 1) | 20 | Untagged | 20 |
-| 4 | — (free) | — | — | 1 |
-| 5 | — (free) | — | — | 1 |
-| 6 | — (free) | — | — | 1 |
-| 7 | — (free) | — | — | 1 |
-| 8 | T440p Parrot OS | 90 | Untagged | 90 |
+| 2 | Dell 7490 #1 (K3s CP temporal) | 20 | Untagged | 20 | ✅ 10.10.20.101 |
+| 3 | Dell 5480 (K3s CP permanente) | 20 | Untagged | 20 | ⏳ 10.10.20.100 |
+| 4 | Dell 7490 #2 (K3s worker1) | 20 | Untagged | 20 | ✅ 10.10.20.102 |
+| 5 | T440p (K3s worker4 storage) | 20 | Untagged | 20 | ✅ 10.10.20.104 |
+| 6 | P52 (K3s worker3 ML/GPU) | 20 | Untagged | 20 | ⏳ 10.10.20.103 |
+| 7 | T430 (Monitoring MGMT) | 10 | Untagged | 10 | ✅ 10.10.10.10 |
+| 8 | Parrot OS (PENTEST) | 90 | Untagged | 90 | VLAN 90 |
 
 > **Port 1 is the uplink/trunk port** connecting to the Proxmox host. It carries all VLAN traffic tagged, allowing pfSense VMs and LXC containers to be assigned to specific VLANs.
 
@@ -112,7 +112,7 @@ Internet / ISP (Telmex Infinitum)
 |---|---|---|---|---|
 | 1 | Default | — | Switch management default | All ports (base) |
 | 10 | MGMT | 10.10.10.0/24 | Out-of-band management | Proxmox, switch, AdGuard |
-| 20 | PROD | 10.10.20.0/24 | K3s production cluster | T440p, T430, P52 (future) |
+| 20 | PROD | 10.10.20.0/24 | K3s production cluster | Dell 7490 #1 ✅, Dell 7490 #2 ✅, T440p ✅, Dell 5480 ⏳, P52 ⏳ |
 | 30 | DEV | 10.10.30.0/24 | Development & builds | P52, P53 (future) |
 | 40 | STORAGE | 10.10.40.0/24 | Longhorn replication traffic | K3s nodes (future) |
 | 50 | DMZ | 10.10.50.0/24 | Exposed services / Ingress | K3s Traefik (future) |
@@ -564,22 +564,28 @@ pct start 101
 
 > Note: Switch uses `10.10.10.2`, so AdGuard gets `10.10.10.3`.
 
-### K3s Nodes — Fedora Server Installation
+### K3s Cluster — ✅ INSTALADO (Junio 2026)
 
-Once pfSense provides DHCP on VLAN 20, install Fedora Server minimal on:
-- T440p (port 2) — K3s control-plane
-- T430 (port 3) — K3s worker 1
+Cluster K3s v1.35.5+k3s1 operativo. IPs estáticas (no DHCP):
 
-Both will receive IPs in `10.10.20.0/24` automatically.
+| Nodo | Puerto | IP | Estado |
+|---|---|---|---|
+| Dell 7490 #1 (CP) | P2 | 10.10.20.101 | ✅ Ready |
+| Dell 7490 #2 (W1) | P4 | 10.10.20.102 | ✅ Ready |
+| T440p (W4) | P5 | 10.10.20.104 | ✅ Ready |
+
+Stack instalado: Cilium v1.19.5 + Hubble, Longhorn v1.12.0, ArgoCD v9.6.0.
+
+Instalación automatizada via `bash deploy.sh` desde el P53.
 
 ### Future Port Assignments
 
-| Port | Future Device | VLAN |
-|---|---|---|
-| 4 | P52 (K3s worker 2) | 20 |
-| 5 | Dell 3501 (monitoring/bastion) | 10 |
-| 6 | Reserved | — |
-| 7 | Reserved | — |
+| Port | Device | VLAN | Estado |
+|---|---|---|---|
+| 3 | Dell 5480 (K3s CP permanente) | 20 | ⏳ Llega después |
+| 6 | P52 (K3s worker3 ML/GPU) | 20 | ⏳ Llega después |
+
+**Todos los puertos ocupados.** Para expansión futura ver `HomeLab-Switch-Expansion-Plan.md` (Opción A: switch 16 puertos).
 
 ---
 
@@ -633,4 +639,4 @@ cat /etc/network/interfaces | grep -A8 vmbr1
 
 ---
 
-*Document generated from live lab session — TL-SG108E v6.0 on Proxmox 9.1.1 / Lenovo M720q*
+*Document v2.0 — TL-SG108E v6.0 · Proxmox 9.1.1 · K3s DEPLOYED ✅ · Todos los puertos ocupados · Junio 2026*
