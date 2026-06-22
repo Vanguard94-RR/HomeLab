@@ -116,7 +116,8 @@ if command -v getenforce &>/dev/null; then
   if rpm -q k3s-selinux &>/dev/null; then
     skip "k3s-selinux instalado"
   else
-    do_run "Instalar k3s-selinux" dnf install -y k3s-selinux
+    # k3s-selinux no está en repos de Fedora 42 — intentar, ignorar si falla
+    dnf install -y k3s-selinux >> "${LOG_FILE:-/dev/null}" 2>&1 && ok "k3s-selinux instalado" || warn "k3s-selinux no disponible en este repo (no crítico en Fedora 42)"
   fi
 else
   skip "SELinux no presente en este sistema"
@@ -232,4 +233,46 @@ fi
 # -----------------------------------------------------------------------------
 # Summary
 # -----------------------------------------------------------------------------
+print_summary "$MODULE_NAME"
+
+# -----------------------------------------------------------------------------
+# Longhorn prerequisitos — todos los nodos
+# -----------------------------------------------------------------------------
+section "01-LONGHORN-PREREQS"
+
+# open-iscsi — requerido por Longhorn para block storage
+if systemctl is-active --quiet iscsid 2>/dev/null; then
+  skip "iscsid ya activo"
+else
+  if rpm -q iscsi-initiator-utils &>/dev/null; then
+    info "iscsi-initiator-utils instalado pero iscsid no activo — habilitando"
+    do_run "Habilitar iscsid" systemctl enable --now iscsid
+  else
+    do_run "Instalar iscsi-initiator-utils" dnf install -y iscsi-initiator-utils
+    do_run "Habilitar iscsid" systemctl enable --now iscsid
+  fi
+fi
+
+# nfs-utils — requerido por Longhorn para ReadWriteMany volumes
+if rpm -q nfs-utils &>/dev/null; then
+  skip "nfs-utils ya instalado"
+else
+  do_run "Instalar nfs-utils" dnf install -y nfs-utils
+fi
+
+# cryptsetup — requerido por Longhorn para encrypted volumes
+if rpm -q cryptsetup &>/dev/null; then
+  skip "cryptsetup ya instalado"
+else
+  do_run "Instalar cryptsetup" dnf install -y cryptsetup
+fi
+
+# Directorio de datos Longhorn
+LONGHORN_DIR="${LONGHORN_DATA_PATH:-/var/lib/longhorn}"
+if [[ -d "$LONGHORN_DIR" ]]; then
+  skip "Directorio Longhorn ya existe ($LONGHORN_DIR)"
+else
+  do_run "Crear directorio Longhorn $LONGHORN_DIR" mkdir -p "$LONGHORN_DIR"
+fi
+
 print_summary "$MODULE_NAME"
