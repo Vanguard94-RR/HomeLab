@@ -209,9 +209,9 @@ function Monitoring({P}) {
     {name:"Alertmanager",port:9093,url:"alertmanager.mgmt",desc:"Alertas · email · Slack",disk:"SSD 5GB",pal:"amber"},
   ];
   const targets=[
-    {name:"Proxmox VE",ip:"192.168.1.65",port:9221,exporter:"pve_exporter",status:"pending"},
-    {name:"pfSense",ip:"10.10.10.1",port:9100,exporter:"node_exporter",status:"pending"},
-    {name:"AdGuard Home",ip:"10.10.10.3",port:9617,exporter:"adguard_exporter",status:"pending"},
+    {name:"Proxmox VE",ip:"192.168.1.65",port:9221,exporter:"pve_exporter (virtualenv)",status:"up"},
+    {name:"pfSense",ip:"10.10.10.1",port:9100,exporter:"node_exporter (FreeBSD)",status:"up"},
+    {name:"AdGuard Home",ip:"10.10.10.10",port:9617,exporter:"adguard-exporter (T430)",status:"up"},
     {name:"dell-7490-1",ip:"10.10.20.100",port:9100,exporter:"node_exporter DaemonSet",status:"pending"},
     {name:"dell-7490-2",ip:"10.10.20.101",port:9100,exporter:"node_exporter DaemonSet",status:"pending"},
     {name:"dell-5480",ip:"10.10.20.102",port:9100,exporter:"node_exporter DaemonSet",status:"pending"},
@@ -220,7 +220,7 @@ function Monitoring({P}) {
     {name:"Longhorn",ip:"10.10.20.100",port:9500,exporter:"built-in",status:"pending"},
     {name:"Cilium/Hubble",ip:"kube-system",port:9962,exporter:"built-in",status:"pending"},
     {name:"Istio",ip:"10.10.20.100",port:15014,exporter:"built-in",status:"pending"},
-    {name:"T430 (self)",ip:"10.10.10.10",port:9100,exporter:"node_exporter",status:"pending"},
+    {name:"T430 (self)",ip:"10.10.10.10",port:9100,exporter:"node_exporter",status:"up"},
   ];
   return (
     <div>
@@ -283,7 +283,7 @@ function Monitoring({P}) {
       <div style={{padding:14,background:P.bg2,borderRadius:8}}>
         <div style={{fontSize:13,fontWeight:500,color:P.txt,marginBottom:8}}>Quick start</div>
         <pre style={{fontFamily:"var(--font-mono)",fontSize:11,color:P.txt,lineHeight:1.9,margin:0,whiteSpace:"pre-wrap"}}>
-          {`cd /opt/monitoring\npodman-compose up -d\n\n# Health check\ncurl -s http://localhost:9090/-/healthy && echo "Prometheus OK"\ncurl -s http://localhost:3000/api/health\ncurl -s http://localhost:3100/ready && echo "Loki OK"\n\n# Grafana UI\nopen http://grafana.mgmt:3000`}
+          {`cd /opt/monitoring\nsudo podman-compose up -d\n\n# Health checks\ncurl -sf http://localhost:9091/-/healthy && echo "Prometheus OK"\ncurl -sf http://localhost:3000/api/health\ncurl -sf http://localhost:3100/ready && echo "Loki OK"\n\n# Grafana UI\nopen http://grafana.mgmt:3000\n# admin / HomeLab2026x\n\n# Targets activos\ncurl -s http://localhost:9091/api/v1/targets | \\\n  python3 -c "import sys,json; t=json.load(sys.stdin)['data']['activeTargets']; [print(f\\"{x['labels']['job']:20s} {x['health']}\\") for x in t]"`}
         </pre>
       </div>
     </div>

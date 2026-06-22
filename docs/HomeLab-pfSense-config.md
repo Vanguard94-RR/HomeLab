@@ -35,27 +35,25 @@ Internet / ISP (Telmex Infinitum)
    Proxmox: 192.168.1.65
          │
    pfSense VM (VM 100)
-   WAN:  vtnet0   → 192.168.1.131 (DHCP from ISP router)
-   LAN:  vtnet1.10 → 10.10.10.1/24 (MGMT gateway) ← ACTUALIZADO Jun 2026
+   WAN: vtnet0 → 192.168.1.131 (DHCP from ISP router)
+   LAN: vtnet1 → 10.10.10.1/24 (MGMT gateway)
          │
    vmbr1 (enp1s0f0) — VLAN-aware trunk
          │
    TL-SG108E — 10.10.10.2
          │
-   ┌──────┬──────┬──────┬──────┬──────┬──────┬──────┬──────┐
-   │      │      │      │      │      │      │      │      │
- P1(trunk) P2   P3     P4     P5     P6    P7(V10) P8(V90)
-  M720q  7490#1 5480  7490#2 T440p  P52   T430    Parrot
-         V20    V20    V20    V20    V20   mon
+   ┌──────┬──────┬──────┬──────┬──────┬──────┬──────┐
+   │      │      │      │      │      │      │      │
+ P1(trunk) P2   P3     P4     P5     P6    P8(V90)
+  M720q  7490#1 5480  7490#2 T440p  P52    Parrot
+         V20    V20    V20    V20    V20
 ```
 
-> **⚠️ Cambio Jun 2026:** La interfaz LAN fue migrada de `vtnet1` (native/untagged) a `vtnet1.10` (tagged VLAN 10). Esto permite que dispositivos físicos en VLAN 10 (como el T430 en puerto 7) alcancen pfSense correctamente.
-
-### VLAN Routing Table — Estado actual (Junio 2026) ✅
+### VLAN Routing Table
 
 | Interface | VLAN | Subnet | Gateway (pfSense) | Purpose |
 |---|---|---|---|---|
-| vtnet1.10 (LAN) | 10 | 10.10.10.0/24 | 10.10.10.1 | Management ← migrado de vtnet1 |
+| vtnet1 (LAN) | 10 | 10.10.10.0/24 | 10.10.10.1 | Management |
 | vtnet1.20 (PROD) | 20 | 10.10.20.0/24 | 10.10.20.1 | K3s cluster |
 | vtnet1.30 (DEV) | 30 | 10.10.30.0/24 | 10.10.30.1 | Development |
 | vtnet1.40 (STORAGE) | 40 | 10.10.40.0/24 | 10.10.40.1 | Longhorn replication |
@@ -212,31 +210,73 @@ pfSense applies all configuration and reloads. The browser tab title changes to 
 
 ### Default vs Optimized
 
-| Parameter | Default | Optimized | Savings |
+| Parameter | Default | Optimizado Jun 2026 | Ahorro |
 |---|---|---|---|
-| Memory | 4608 MB | 2048 MB | 2.5 GB freed |
-| Usage at idle | 7% (~320MB) | 18% (~360MB) | — |
+| Memory | 4608 MB | **1024 MB** | 3.5 GB liberados al host |
+| Balloon | enabled | **disabled** | Evita falso positivo 101% en Proxmox |
+| QEMU Guest Agent | none | **enabled** | IPs visibles, snapshots consistentes |
+
+### Diagnóstico Junio 2026 — Falso positivo de memoria
+
+Proxmox mostraba **101.80%** de uso de memoria para pfSense. Diagnóstico:
+
+```
+# Memoria REAL de pfSense (FreeBSD)
+Mem: 13M Active, 78M Inact, 239M Wired, 132M Buf, 1607M Free
+Swap: 1638M Total, 1638M Free  ← sin presión
+```
+
+**Causa:** FreeBSD no tiene balloon driver — Proxmox reporta RAM asignada = RAM usada. No es un problema real, solo una limitación de monitoreo sin guest agent + balloon.
 
 ### Minimum Requirements for This Configuration
 
 | Use Case | RAM Needed |
 |---|---|
 | Basic routing only | 512 MB |
-| VLANs + DHCP + Firewall | 1 GB |
+| VLANs + DHCP + Firewall | **1 GB** ← configuración actual |
 | + WireGuard VPN | 1.5 GB |
 | + pfBlockerNG / Suricata | 2+ GB |
 
-2 GB provides comfortable headroom for all planned features including WireGuard.
-
-### Procedure
+### Procedure — Configuración aplicada Junio 2026
 
 ```bash
-# From Proxmox shell
-qm stop 100
-qm set 100 --memory 2048
-qm config 100 | grep memory    # verify
+# Desde Proxmox shell — apagar pfSense primero
+qm shutdown 100
+sleep 15
+
+# Reducir RAM a 1GB
+qm set 100 --memory 1024
+
+# Habilitar QEMU Guest Agent (requiere cold start)
+qm set 100 --agent enabled=1,fstrim_cloned_disks=0
+
+# Deshabilitar balloon (evita falso positivo en UI Proxmox)
+qm set 100 --balloon 0
+
+# Verificar
+qm config 100 | grep -E "memory|agent|balloon"
+
+# Arrancar
 qm start 100
 ```
+
+### QEMU Guest Agent en pfSense (FreeBSD)
+
+```bash
+# En pfSense shell (opción 8)
+pkg install -y qemu-guest-agent
+
+echo 'qemu_guest_agent_enable="YES"' >> /etc/rc.conf
+echo 'qemu_guest_agent_flags="-d -v -l /var/log/qemu-ga.log"' >> /etc/rc.conf
+
+service qemu-guest-agent start
+service qemu-guest-agent status
+# Expected: qemu_guest_agent is running as pid XXXXX
+```
+
+> ⚠️ El agente requiere que la VM tenga el dispositivo virtio-serial habilitado. Solo aparece si `--agent enabled=1` se configuró **antes** del arranque (cold start, no reboot).
+
+> ⚠️ Incluso con guest agent, Proxmox UI seguirá mostrando ~103% para pfSense — esto es normal con FreeBSD. La métrica real está disponible vía node_exporter.
 
 ---
 
@@ -580,38 +620,13 @@ VPN → WireGuard → Add Tunnel
 - Tunnel network: `10.10.100.0/24`
 - Firewall rule: Allow WireGuard clients to LAN
 
-### K3s Nodes
+### K3s Nodes (T440p + T430)
 
-Con pfSense proveyendo DHCP en VLAN 20. Nodos conectados y funcionando:
-- Dell 7490 #1 (puerto 2) → 10.10.20.100 ✅
-- Dell 5480 (puerto 3) → 10.10.20.102 ✅
-- Dell 7490 #2 (puerto 4) → 10.10.20.101 ✅
-- T440p storage (puerto 5) → 10.10.20.104 ✅
-- P52 ML/GPU (puerto 6) → 10.10.20.103 ✅
-
-### Monitoring server (T430 — Junio 2026 ✅)
-
-El T430 fue migrado de VLAN 20 a VLAN 10 para actuar como servidor de monitoreo dedicado:
-1. pfSense: VLAN 10 creada como `vtnet1.10`, LAN migrada de `vtnet1` a `vtnet1.10`
-2. Switch: puerto 7 configurado con PVID 10 y VLAN 10 untagged
-3. T430: IP estática `10.10.10.10/24`, gateway `10.10.10.1`
-
-### Acceso P53 al lab (Junio 2026 ✅)
-
-Reglas de firewall WAN agregadas para acceso desde P53 (192.168.1.x):
-
-```
-Firewall → Rules → WAN:
-  Action: Pass | Source: 192.168.1.0/24 | Dest: WAN address | Port: 80
-  Action: Pass | Source: 192.168.1.0/24 | Dest: 10.10.0.0/8 | Protocol: Any
-```
-
-Rutas estáticas en P53:
-```bash
-nmcli connection modify "INFINITUMC241" \
-  +ipv4.routes "10.10.10.0/24 192.168.1.131" \
-  +ipv4.routes "10.10.20.0/24 192.168.1.131"
-```
+With pfSense providing DHCP on VLAN 20:
+1. Connect T440p to switch port 2 — receives IP in `10.10.20.x`
+2. Connect T430 to switch port 3 — receives IP in `10.10.20.x`
+3. Install Fedora Server minimal on both
+4. Deploy K3s control-plane (T440p) and worker (T430)
 
 ### DMZ Firewall Rules
 
@@ -639,35 +654,30 @@ Store the backup file securely — it contains the full firewall configuration.
 ### Access
 
 ```
-pfSense Web UI:   http://10.10.10.1      (desde VLAN 10 — T430, Windows VM)
-pfSense Web UI:   http://192.168.1.131   (desde P53 via regla WAN — requiere ruta estática)
+pfSense Web UI:   http://10.10.10.1
 Username:         admin
 Password:         (changed from default 'pfsense')
 Console:          Proxmox → VM 100 → Console
 ```
 
-> **Nota Jun 2026:** Para acceder desde pfSense shell: opción 8 (Shell) → `pfctl -d` deshabilita temporalmente el firewall para debug. Reactivar con `pfctl -e`.
-
 ### Key IPs
 
 ```
 pfSense WAN:      192.168.1.131 (DHCP)
-pfSense LAN:      10.10.10.1 (vtnet1.10 — VLAN 10 tagged)
+pfSense LAN:      10.10.10.1
 pfSense PROD GW:  10.10.20.1
 pfSense DEV GW:   10.10.30.1
 pfSense STOR GW:  10.10.40.1
 pfSense DMZ GW:   10.10.50.1
 pfSense PEN GW:   10.10.90.1
-AdGuard DNS:      192.168.1.100 → 10.10.10.3
+AdGuard DNS:      192.168.1.100 → 10.10.10.3 (post-migration)
 Switch MGMT:      10.10.10.2
 Proxmox:          192.168.1.65
-T430 monitoring:  10.10.10.10
 ```
 
 ### DHCP Pools
 
 ```
-VLAN 10 MGMT:     sin DHCP — IPs estáticas (T430: 10.10.10.10, AdGuard: 10.10.10.3, Switch: 10.10.10.2)
 VLAN 20 PROD:     10.10.20.100 – 10.10.20.200  DNS: 10.10.10.3
 VLAN 30 DEV:      10.10.30.100 – 10.10.30.200  DNS: 10.10.10.3
 VLAN 90 PENTEST:  10.10.90.100 – 10.10.90.150  DNS: 10.10.90.1
@@ -688,15 +698,61 @@ qm status 100
 qm terminal 100
 ```
 
-### Cambios Jun 2026
+---
 
-| Cambio | Descripción |
-|---|---|
-| LAN migrada | vtnet1 (untagged) → vtnet1.10 (VLAN 10 tagged) |
-| T430 VLAN | VLAN 20 → VLAN 10, IP 10.10.20.101 → 10.10.10.10 |
-| Regla WAN P53 | 192.168.1.0/24 → WAN:80 y 10.10.0.0/8 |
-| Switch puerto 7 | libre → T430 monitoring PVID 10 |
+## Appendix B — Monitoreo de pfSense (Junio 2026 ✅)
+
+### node_exporter en pfSense (FreeBSD)
+
+```bash
+# En pfSense shell (opción 8)
+pkg install -y node_exporter
+
+echo 'node_exporter_enable="YES"' >> /etc/rc.conf
+
+service node_exporter start
+service node_exporter status
+# Expected: node_exporter is running as pid XXXXX
+
+# Verificar métricas
+curl -s http://localhost:9100/metrics | grep "node_" | head -10
+# Total node_ metrics en FreeBSD: ~53
+```
+
+**Job en Prometheus (T430 prometheus.yml):**
+
+```yaml
+  - job_name: pfsense
+    static_configs:
+      - targets: ["10.10.10.1:9100"]
+        labels:
+          instance: pfsense
+          role: firewall
+    metric_relabel_configs:
+      - target_label: nodename
+        replacement: pfsense
+```
+
+> **Nota:** FreeBSD no exporta `node_uname_info` — se agrega `nodename: pfsense` via relabeling para compatibilidad con el Node Exporter Full dashboard.
+
+**Métricas disponibles en FreeBSD vs Linux:**
+
+| Métrica | Linux | FreeBSD | Dashboard panel |
+|---|---|---|---|
+| CPU | `node_cpu_seconds_total` | ✅ igual | CPU Usage % |
+| RAM total | `node_memory_MemTotal_bytes` | ❌ (usa `node_memory_active_bytes`) | N/A en Node Exporter Full |
+| RAM libre | `node_memory_MemAvailable_bytes` | ❌ (usa `node_memory_free_bytes`) | N/A |
+| Load avg | `node_load1/5/15` | ✅ igual | Sys Load |
+| Network | `node_network_*` | ✅ igual | Network Traffic |
+| Filesystem | `node_filesystem_*` | ✅ igual | Disk Space |
+| Pressure (PSI) | disponible | ❌ no existe | N/A |
+
+**Dashboard personalizado pfSense FreeBSD:**
+
+Dashboard creado con métricas FreeBSD correctas. UID: `pfsense-freebsd`
+
+Acceso: `http://grafana.mgmt:3000` → Dashboards → pfSense Firewall — FreeBSD
 
 ---
 
-*Document generated from live lab session — pfSense CE 2.7.2 on Proxmox 9.1.1 / Lenovo M720q*
+*Document v2.1 — pfSense CE 2.7.2 · Proxmox 9.1.1 · M720q · RAM 1GB · QEMU Guest Agent ✅ · node_exporter ✅ · Junio 2026*

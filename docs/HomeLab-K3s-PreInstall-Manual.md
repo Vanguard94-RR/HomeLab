@@ -24,7 +24,7 @@
 
 ## 1. Cluster Architecture
 
-```
+```text
 VLAN 20 — PROD (10.10.20.0/24)
           │
           ├── Dell 7490 #1  (10.10.20.100)  control-plane
@@ -58,7 +58,7 @@ DEPLOYED as monitoring: T430 → 10.10.10.10 · VLAN 10 MGMT ✅ Junio 2026
 ### Cluster Resource Summary
 
 | Resource | Value |
-|---|---|
+| --- | --- |
 | Total nodes | 1 master + 4 workers |
 | Total RAM | 176GB (128GB SSD workers + 16GB T440p + 32GB P52) |
 | Total CPU cores | 28C / 40T |
@@ -74,7 +74,7 @@ DEPLOYED as monitoring: T430 → 10.10.10.10 · VLAN 10 MGMT ✅ Junio 2026
 ### Dell Latitude 7490 #1 — Control-Plane
 
 | Parameter | Value |
-|---|---|
+| --- | --- |
 | Role | K3s server (control-plane) |
 | Hostname | `dell-7490-1` |
 | IP | `10.10.20.100/24` |
@@ -87,7 +87,7 @@ DEPLOYED as monitoring: T430 → 10.10.10.10 · VLAN 10 MGMT ✅ Junio 2026
 ### Dell Latitude 7490 #2 — Worker 1
 
 | Parameter | Value |
-|---|---|
+| --- | --- |
 | Role | K3s agent (worker1) |
 | Hostname | `dell-7490-2` |
 | IP | `10.10.20.101/24` |
@@ -99,7 +99,7 @@ DEPLOYED as monitoring: T430 → 10.10.10.10 · VLAN 10 MGMT ✅ Junio 2026
 ### Dell Latitude 5480 — Worker 2
 
 | Parameter | Value |
-|---|---|
+| --- | --- |
 | Role | K3s agent (worker2) |
 | Hostname | `dell-5480` |
 | IP | `10.10.20.102/24` |
@@ -111,7 +111,7 @@ DEPLOYED as monitoring: T430 → 10.10.10.10 · VLAN 10 MGMT ✅ Junio 2026
 ### ThinkPad P52 — Worker 3 (ML/GPU)
 
 | Parameter | Value |
-|---|---|
+| --- | --- |
 | Role | K3s agent (worker3 — ML/GPU) |
 | Hostname | `p52` |
 | IP | `10.10.20.103/24` |
@@ -128,7 +128,7 @@ DEPLOYED as monitoring: T430 → 10.10.10.10 · VLAN 10 MGMT ✅ Junio 2026
 ### ThinkPad T440p — Worker 4 (Storage)
 
 | Parameter | Value |
-|---|---|
+| --- | --- |
 | Role | K3s agent (worker4 — storage hybrid) |
 | Hostname | `t440p-storage` |
 | IP | `10.10.20.104/24` |
@@ -144,7 +144,7 @@ DEPLOYED as monitoring: T430 → 10.10.10.10 · VLAN 10 MGMT ✅ Junio 2026
 ### ThinkPad T430 — MONITORING SERVER (Junio 2026 ✅)
 
 | Parameter | Value |
-|---|---|
+| --- | --- |
 | Status | **DEPLOYED como monitoring server dedicado** |
 | IP | **10.10.10.10/24** |
 | VLAN | **10 (MGMT) — switch puerto 7** |
@@ -152,7 +152,7 @@ DEPLOYED as monitoring: T430 → 10.10.10.10 · VLAN 10 MGMT ✅ Junio 2026
 | Stack | Prometheus :9091 · Grafana :3000 · Loki :3100 · Tempo :3200 · Alertmanager :9093 |
 | Storage | SSD 512GB WWAN (OS + Prometheus + Tempo) · HDD 500GB SATA (/srv/storage → Loki) · HDD 500GB Ultrabay (/srv/storage2 → backups) |
 | Razón | Monitoreo fuera del cluster K3s — si K3s falla, Grafana sigue vivo |
-| Acceso | http://grafana.mgmt:3000 · admin / <REDACTED> |
+| Acceso | <http://grafana.mgmt:3000> · admin / REDACTED |
 
 > **Patrón enterprise:** El monitoring server vive en VLAN 10 MGMT, fuera del cluster que monitorea. pfSense enruta el scraping de Prometheus hacia VLAN 20 (K3s nodes) de forma controlada.
 
@@ -161,7 +161,7 @@ DEPLOYED as monitoring: T430 → 10.10.10.10 · VLAN 10 MGMT ✅ Junio 2026
 The pre-installation scripts (v1.3 precheck + v1.2 prefix) were originally verified on T440p-Server and T430:
 
 | Node | Pre-check result | Notes |
-|---|---|---|
+| --- | --- | --- |
 | T440p-Server | 26 passed / 0 warnings / 0 failed | Scripts verified working on Fedora 42 |
 | T430 | 26 passed / 0 warnings / 0 failed | Scripts verified working on Fedora 42 |
 
@@ -178,6 +178,7 @@ Two scripts were developed and verified on both nodes.
 **Purpose:** Read-only audit of node readiness. Safe to run at any time.
 
 **Usage:**
+
 ```bash
 ./homelab-k3s-precheck.sh --role master   # on t440p-server
 ./homelab-k3s-precheck.sh --role worker   # on t430
@@ -186,12 +187,13 @@ Two scripts were developed and verified on both nodes.
 **Options:**
 
 | Flag | Default | Description |
-|---|---|---|
+| --- | --- | --- |
 | `--role` | `worker` | Node role: `master` or `worker` |
 | `--adguard` | `10.10.10.3` | AdGuard DNS IP to test against |
 | `--gateway` | auto-detected | Default gateway IP |
 
 **Exit codes:**
+
 - `0` — All checks pass
 - `1` — Warnings present (node likely usable, review warnings)
 - `2` — Failures present (fix before installing K3s)
@@ -199,7 +201,7 @@ Two scripts were developed and verified on both nodes.
 **Checks performed:**
 
 | Section | Checks |
-|---|---|
+| --- | --- |
 | Host Identity | Hostname RFC 1123 format, /etc/hosts resolution |
 | Network | Interface, IP in lab range, gateway, AdGuard, DNS, internet |
 | CPU | Architecture (x86_64/aarch64), core count |
@@ -214,6 +216,7 @@ Two scripts were developed and verified on both nodes.
 **Purpose:** Apply all pre-installation fixes. Idempotent — skips already-configured items.
 
 **Usage:**
+
 ```bash
 sudo ./homelab-k3s-prefix.sh --role master --hostname t440p-server
 sudo ./homelab-k3s-prefix.sh --role worker --hostname t430
@@ -222,7 +225,7 @@ sudo ./homelab-k3s-prefix.sh --role worker --hostname t430
 **Options:**
 
 | Flag | Default | Description |
-|---|---|---|
+| --- | --- | --- |
 | `--role` | `worker` | Node role: `master` or `worker` |
 | `--hostname` | lowercase of current | Target hostname |
 | `--dry-run` | off | Preview changes without applying |
@@ -230,7 +233,7 @@ sudo ./homelab-k3s-prefix.sh --role worker --hostname t430
 **Fixes applied:**
 
 | Fix | What it does |
-|---|---|
+| --- | --- |
 | FIX 1 — Hostname | Sets RFC 1123 lowercase hostname, adds to /etc/hosts |
 | FIX 2 — Swap | Disables swap immediately + comments out fstab entry + disables zram |
 | FIX 3 — SELinux | Installs container-selinux, selinux-policy-base, k3s-selinux RPM from GitHub |
@@ -242,13 +245,15 @@ sudo ./homelab-k3s-prefix.sh --role worker --hostname t430
 ### 3.3 Verified Results
 
 **t440p-server (master):**
-```
+
+```text
 Results: 26 passed | 0 warnings | 0 failed
 STATUS: [PASS] READY -- node is ready for K3s installation
 ```
 
 **t430 (worker):**
-```
+
+```text
 Results: 26 passed | 0 warnings | 0 failed
 STATUS: [PASS] READY -- node is ready for K3s installation
 ```
@@ -262,7 +267,7 @@ Run `homelab-k3s-precheck.sh` and `homelab-k3s-prefix.sh` on each node before in
 ### All Nodes (run precheck + prefix on each)
 
 | Node | Hostname | Role flag | Prefix flag |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | Dell 7490 #1 | `dell-7490-1` | `--role master` | `--role master --hostname dell-7490-1` |
 | Dell 7490 #2 | `dell-7490-2` | `--role worker` | `--role worker --hostname dell-7490-2` |
 | Dell 5480 | `dell-5480` | `--role worker` | `--role worker --hostname dell-5480` |
@@ -315,6 +320,7 @@ lsblk | grep disk
 **Why it matters:** Kubernetes node names are derived from the hostname. The Kubernetes spec (RFC 1123) requires node names to be lowercase alphanumeric with hyphens only. Uppercase hostnames cause node registration failures or unpredictable behavior.
 
 **Fix applied:**
+
 ```bash
 hostnamectl set-hostname t440p-server   # on T440p-Server
 hostnamectl set-hostname t430           # on T430
@@ -327,6 +333,7 @@ hostnamectl set-hostname t430           # on T430
 **Why it matters:** Kubernetes assumes consistent memory availability. When the kernel swaps memory to disk, pod scheduling decisions become unreliable. Kubelets will refuse to start or emit warnings when swap is enabled unless explicitly configured to allow it (not default behavior in K3s).
 
 **Fix applied:**
+
 ```bash
 swapoff -a
 sed -i '/\bswap\b/s/^/#/' /etc/fstab
@@ -339,6 +346,7 @@ sed -i '/\bswap\b/s/^/#/' /etc/fstab
 **Why it matters:** K3s runs containerd and creates special file contexts (e.g. `/usr/local/bin/k3s` needs `container_runtime_exec_t`). Without the policy, SELinux denies these operations and K3s fails to start.
 
 **Fix applied:**
+
 ```bash
 # Downloaded from GitHub releases (Rancher RPM repo is deprecated for Fedora)
 dnf install -y /tmp/k3s-selinux-1.6-1.el9.noarch.rpm
@@ -353,7 +361,7 @@ dnf install -y /tmp/k3s-selinux-1.6-1.el9.noarch.rpm
 **Why it matters:** K3s requires specific ports to be open for cluster communication.
 
 | Port | Protocol | Purpose |
-|---|---|---|
+| --- | --- | --- |
 | 6443 | TCP | K3s API server (kubectl, agents) |
 | 10250 | TCP | Kubelet metrics / exec |
 | 8472 | UDP | Flannel VXLAN overlay (pod-to-pod) |
@@ -362,6 +370,7 @@ dnf install -y /tmp/k3s-selinux-1.6-1.el9.noarch.rpm
 | 2380 | TCP | etcd peer (master only) |
 
 **Fix applied:**
+
 ```bash
 firewall-cmd --permanent --add-port=6443/tcp
 firewall-cmd --permanent --add-port=10250/tcp
@@ -372,6 +381,7 @@ firewall-cmd --reload
 ```
 
 > **Important:** Also add the pod and service CIDRs to the trusted zone after K3s is installed:
+>
 > ```bash
 > firewall-cmd --permanent --zone=trusted --add-source=10.42.0.0/16
 > firewall-cmd --permanent --zone=trusted --add-source=10.43.0.0/16
@@ -383,11 +393,13 @@ firewall-cmd --reload
 **Problem:** `br_netfilter` and `overlay` not loaded (or loaded but not persistent).
 
 **Why it matters:**
+
 - `br_netfilter` — allows iptables to see bridged traffic, required for Flannel networking rules
 - `overlay` — required by containerd for overlay filesystem (container layers)
 - `ip_conntrack` — connection tracking for NAT (required for pod-to-pod and pod-to-service routing)
 
 **Fix applied:**
+
 ```bash
 modprobe br_netfilter overlay ip_conntrack
 printf 'br_netfilter\noverlay\nip_conntrack\n' > /etc/modules-load.d/k3s.conf
@@ -400,6 +412,7 @@ printf 'br_netfilter\noverlay\nip_conntrack\n' > /etc/modules-load.d/k3s.conf
 **Why it matters:** Without this, bridged traffic bypasses iptables rules, breaking Flannel's network policies and pod-to-service routing.
 
 **Fix applied:**
+
 ```bash
 cat > /etc/sysctl.d/k3s.conf << EOF
 net.ipv4.ip_forward = 1
@@ -417,7 +430,7 @@ sysctl --system
 
 K3s nodes live in VLAN 20. pfSense routes traffic between VLANs.
 
-```
+```text
 VLAN 20 — 10.10.20.0/24
   Dell 7490 #1    10.10.20.100  control-plane
   Dell 7490 #2    10.10.20.101  worker1
@@ -435,7 +448,7 @@ VLAN 20 — 10.10.20.0/24
 Navigate to `Services → DHCP Server → VLAN20 → Static Mappings`
 
 | Hostname | MAC | IP |
-|---|---|---|
+| --- | --- | --- |
 | dell-7490-1 | (get after install) | `10.10.20.100` |
 | dell-7490-2 | (get after install) | `10.10.20.101` |
 | dell-5480 | (get after install) | `10.10.20.102` |
@@ -447,7 +460,7 @@ Get MAC addresses with: `ip link show | grep -A1 enp0s25`
 ### 6.2 K3s Internal Networks
 
 | Network | CIDR | Purpose |
-|---|---|---|
+| --- | --- | --- |
 | Pod network | `10.42.0.0/16` | Pod IPs assigned by Flannel |
 | Service network | `10.43.0.0/16` | ClusterIP service IPs |
 | Node network | `10.10.20.0/24` | Physical node IPs (VLAN 20) |
@@ -459,7 +472,7 @@ Get MAC addresses with: `ip link show | grep -A1 enp0s25`
 AdGuard Home will resolve lab service names. Add these rewrites after K3s is installed:
 
 | Domain | Target | Purpose |
-|---|---|---|
+| --- | --- | --- |
 | `k3s.mgmt` | `10.10.20.100` | K3s API endpoint |
 | `*.lab.internal` | MetalLB IP pool | Ingress services (future) |
 
@@ -468,6 +481,7 @@ AdGuard Home will resolve lab service names. Add these rewrites after K3s is ins
 Both nodes currently have DHCP-assigned IPs in VLAN 20. While the DHCP lease is long (5664–7231 seconds), it is best practice to configure static IPs for cluster nodes.
 
 **Option A — Static via NetworkManager (recommended):**
+
 ```bash
 # On t440p-server
 nmcli connection modify "Wired connection 1" \
@@ -483,7 +497,7 @@ nmcli connection up "Wired connection 1"
 Navigate to `Services → DHCP Server → VLAN20 → Static Mappings`
 
 | Hostname | MAC | IP |
-|---|---|---|
+| --- | --- | --- |
 | t440p-server | `28:d2:44:8c:20:89` | `10.10.20.100` |
 | t430 | `28:d2:44:31:83:bc` | `10.10.20.101` |
 
@@ -506,7 +520,7 @@ sudo firewall-cmd --reload
 ### 7.1 Components bundled in K3s (kept)
 
 | Component | Purpose |
-|---|---|
+| --- | --- |
 | Kubernetes API server | Cluster control plane |
 | containerd 2.0 | Container runtime |
 | CoreDNS | In-cluster DNS resolution |
@@ -516,7 +530,7 @@ sudo firewall-cmd --reload
 ### 7.2 Components disabled at install (replaced by enterprise alternatives)
 
 | Disabled | Replaced by | Reason |
-|---|---|---|
+| --- | --- | --- |
 | Flannel CNI | **Cilium** | eBPF networking, NetworkPolicy, L7 visibility |
 | Klipper ServiceLB | **Cilium L2** | Cilium replaces MetalLB natively |
 | Traefik (default) | **Traefik v3 + Nginx** | Separate internal/external ingress |
@@ -527,7 +541,7 @@ sudo firewall-cmd --reload
 ### 7.3 Enterprise Stack — Full Component List
 
 | Category | Component | Purpose |
-|---|---|---|
+| --- | --- | --- |
 | **Orchestration** | K3s | Lightweight Kubernetes distribution |
 | | Helm v3 | Package manager |
 | **CNI & Networking** | Cilium | eBPF CNI · NetworkPolicy L3/L4/L7 · WireGuard mTLS |
@@ -555,7 +569,7 @@ sudo firewall-cmd --reload
 ### 7.4 Why Cilium over Flannel
 
 | | Flannel | Cilium |
-|---|---|---|
+| --- | --- | --- |
 | Dataplane | iptables / VXLAN | eBPF (kernel bypass) |
 | NetworkPolicy | Requires extra plugin | Native L3/L4/L7 |
 | Load Balancing | Klipper (basic) | L2 announcement (replaces MetalLB) |
@@ -567,6 +581,7 @@ sudo firewall-cmd --reload
 ### 7.5 Why Istio for Service Mesh
 
 Istio provides zero-trust networking between microservices:
+
 - **mTLS** — all pod-to-pod traffic encrypted by default
 - **Traffic Management** — canary releases, A/B testing, circuit breakers
 - **Observability** — L7 metrics, traces, access logs per service
@@ -577,7 +592,7 @@ Istio provides zero-trust networking between microservices:
 ### 7.6 Why Dual Ingress
 
 | | Traefik v3 | Nginx Ingress |
-|---|---|---|
+| --- | --- | --- |
 | Purpose | Internal lab services, admin UIs | External / production services |
 | Config | Dynamic (file/CRD) | Standard Kubernetes Ingress |
 | Auth | Forward auth (Keycloak) | External auth via annotations |
@@ -590,7 +605,7 @@ Istio provides zero-trust networking between microservices:
 
 ### 8.1 Order of Operations
 
-```
+```text
 Step 1 — Install Fedora 42 on Dell 7490 #1, Dell 7490 #2, Dell 5480, P52
 Step 2 — Run precheck + prefix on all 5 nodes
 Step 3 — Install K3s server on Dell 7490 #1 (control-plane)
@@ -729,7 +744,8 @@ sudo kubectl get nodes -o wide
 ```
 
 Expected output:
-```
+
+```text
 NAME           STATUS   ROLES                  VERSION        INTERNAL-IP
 dell-7490-1    Ready    control-plane,master   v1.31.x+k3s1  10.10.20.100
 dell-7490-2    Ready    <none>                 v1.31.x+k3s1  10.10.20.101
@@ -776,7 +792,7 @@ sudo kubectl get nodes
 **Flags explained:**
 
 | Flag | Purpose |
-|---|---|
+| --- | --- |
 | `--selinux` | Enable SELinux support in containerd |
 | `--write-kubeconfig-mode 644` | Allow non-root kubectl access |
 | `--tls-san 10.10.20.100` | Add node IP to TLS certificate SANs |
@@ -847,7 +863,8 @@ sudo kubectl get nodes -o wide
 ```
 
 Expected output:
-```
+
+```text
 NAME            STATUS   ROLES                  AGE   VERSION        INTERNAL-IP
 t440p-server    Ready    control-plane,master   Xm    v1.31.x+k3s1  10.10.20.100
 t430            Ready    <none>                 Xm    v1.31.x+k3s1  10.10.20.101
@@ -874,6 +891,7 @@ sudo cat /etc/rancher/k3s/k3s.yaml
 ```
 
 On P53:
+
 ```bash
 mkdir -p ~/.kube
 
@@ -891,7 +909,7 @@ kubectl get pods -A
 
 ### Phase 1 — Cluster stable (immediate after install)
 
-```
+```text
 ✅ K3s server on t440p-server
 ✅ K3s agent on t430
 ✅ kubectl from P53 daily driver
@@ -903,7 +921,7 @@ kubectl get pods -A
 
 ### Phase 2 — Add Worker Node 2 (P52)
 
-```
+```text
 ⏳ Install Fedora Server on P52
 ⏳ Run homelab-k3s-precheck.sh --role worker on P52
 ⏳ Run homelab-k3s-prefix.sh --role worker on P52
@@ -914,7 +932,7 @@ kubectl get pods -A
 
 ### Phase 3 — Storage (requires 3 nodes)
 
-```
+```text
 ⏳ Install Longhorn CSI
 ⏳ Verify 3-node replication (2× default)
 ⏳ Create StorageClasses: longhorn (default), longhorn-single, longhorn-rwx
@@ -922,7 +940,7 @@ kubectl get pods -A
 
 ### Phase 4 — GitOps
 
-```
+```text
 ⏳ Deploy Gitea (self-hosted Git)
 ⏳ Deploy ArgoCD
 ⏳ Configure GitOps pipeline
@@ -931,7 +949,7 @@ kubectl get pods -A
 
 ### Phase 5 — Observability
 
-```
+```text
 ⏳ Deploy Prometheus + Grafana stack
 ⏳ Add AdGuard exporter (scrape 10.10.10.3:9617)
 ⏳ Deploy Loki + Promtail for log aggregation
@@ -1030,7 +1048,7 @@ curl -k https://10.10.20.100:6443/healthz
 ### Node Summary
 
 | Node | Role | IP | Hostname | Key spec |
-|---|---|---|---|---|
+| --- | --- | --- | --- | --- |
 | Dell 7490 #1 | K3s control-plane | 10.10.20.100 | dell-7490-1 | 32GB DDR4 · 256GB SSD |
 | Dell 7490 #2 | K3s worker1 | 10.10.20.101 | dell-7490-2 | 32GB DDR4 · 256GB SSD |
 | Dell 5480 | K3s worker2 | 10.10.20.102 | dell-5480 | 32GB DDR4 · 256GB SSD |
@@ -1095,7 +1113,7 @@ sudo kubectl get pods -A
 ### Key File Paths
 
 | Path | Purpose |
-|---|---|
+| --- | --- |
 | `/etc/rancher/k3s/k3s.yaml` | Kubeconfig |
 | `/var/lib/rancher/k3s/server/node-token` | Cluster join token |
 | `/var/lib/rancher/k3s/server/db/` | etcd data |

@@ -18,12 +18,31 @@
 | Tempo | 3200, 4317, 4318 | ✅ UP | SSD /opt/monitoring/tempo/data |
 | Alertmanager | 9093 | ✅ UP | SSD /opt/monitoring/alertmanager/data |
 | node-exporter | 9100 | ✅ UP | systemd service |
+| adguard-exporter | 9617 | ✅ UP | contenedor Podman |
+
+**Exporters externos desplegados:**
+
+| Exporter | Host | Puerto | Estado |
+|---|---|---|---|
+| node_exporter | pfSense (10.10.10.1) | 9100 | ✅ UP |
+| pve_exporter | Proxmox (192.168.1.65) | 9221 | ✅ UP |
+| adguard-exporter | T430 (10.10.10.10) | 9617 | ✅ UP |
+| node-exporter | T430 (self) | 9100 | ✅ UP |
+
+**Alertas activas:**
+
+| Alerta | Estado | Razón |
+|---|---|---|
+| NodeDown (4) | 🔴 FIRING | K3s no instalado — esperado |
+| AdGuardDown | ✅ Resuelta | adguard-exporter operativo |
+| ProxmoxDown | ✅ Resuelta | pve_exporter operativo |
+| HighCPU/Memory/Disk | ✅ Inactivas | Lab saludable |
 
 **Acceso:**
 - Grafana: `http://grafana.mgmt:3000` · `http://10.10.10.10:3000`
 - Prometheus: `http://prometheus.mgmt:9091` · `http://10.10.10.10:9091`
 - Alertmanager: `http://alertmanager.mgmt:9093`
-- Credenciales Grafana: `admin / <REDACTED>`
+- Credenciales Grafana: `admin / HomeLab2026x`
 
 **Dashboards importados:**
 - Node Exporter Full (ID: 1860) ✅
@@ -31,6 +50,7 @@
 - Alertmanager (ID: 9578) ✅
 - Loki Kubernetes Logs (ID: 15141) ✅
 - Docker and system monitoring (ID: 14282) ✅
+- pfSense Firewall — FreeBSD (UID: pfsense-freebsd) ✅ custom
 
 ---
 
@@ -608,10 +628,24 @@ scrape_configs:
     params:
       module: [default]
 
+  # ── pfSense (node_exporter en FreeBSD) ────────────────────────────────
+  - job_name: pfsense
+    static_configs:
+      - targets: ["10.10.10.1:9100"]
+        labels:
+          instance: pfsense
+          role: firewall
+    metric_relabel_configs:
+      # FreeBSD no tiene node_uname_info — agregar nodename manualmente
+      - target_label: nodename
+        replacement: pfsense
+
   # ── AdGuard Home ───────────────────────────────────────────────────────
+  # ⚠️ Target apunta al T430 (10.10.10.10:9617), NO al LXC AdGuard
+  # El adguard-exporter corre como contenedor en T430 y consulta AdGuard remotamente
   - job_name: adguard
     static_configs:
-      - targets: ["10.10.10.3:9617"]
+      - targets: ["10.10.10.10:9617"]
         labels:
           instance: adguard
           role: dns
@@ -977,60 +1011,130 @@ Import these dashboard IDs from Grafana.com (`Dashboards → Import`):
 
 ## 12. External Exporters
 
-### 12.1 pve_exporter (on Proxmox host)
+### 12.1 pve_exporter (on Proxmox host) — INSTALADO ✅
+
+**Proceso real de instalación (Junio 2026):**
 
 ```bash
-# On Proxmox host shell
-pip3 install prometheus-pve-exporter --break-system-packages
+# En Proxmox shell (Debian — no tiene pip3 por defecto)
+apt-get install -y python3-pip python3-venv
 
-# Create config
-cat > /etc/pve_exporter.yml << 'EOF'
+# Instalar en virtualenv (recomendado en Debian)
+python3 -m venv /opt/pve_exporter
+/opt/pve_exporter/bin/pip install prometheus-pve-exporter
+
+# Verificar binario
+/opt/pve_exporter/bin/pve_exporter --help
+```
+
+**API Token (más seguro que user/password):**
+
+```
+Proxmox UI → Datacenter → Permissions → API Tokens → Add
+  User:                root@pam
+  Token ID:            pve-exporter
+  Privilege Separation: desactivado  ← hereda permisos de root
+```
+
+**Config con API token:**
+
+```bash
+mkdir -p /etc/pve_exporter
+cat > /etc/pve_exporter/pve.yml << 'EOF'
 default:
-  user: prometheus@pve
-  password: YOUR_PASSWORD
+  user: root@pam
+  token_name: pve-exporter
+  token_value: <TOKEN-UUID>
   verify_ssl: false
 EOF
+chmod 600 /etc/pve_exporter/pve.yml
+```
 
-# Create Proxmox API user (in Proxmox UI)
-# Datacenter → Users → Add: prometheus@pve
-# Permissions → Add: / → prometheus@pve → PVEAuditor
+**Servicio systemd — sintaxis correcta para pve_exporter v3.x:**
 
-# Create systemd service
-cat > /etc/systemd/system/pve_exporter.service << 'SVCEOF'
+```bash
+# ⚠️ pve_exporter 3.x usa flags distintos — NO usar argumentos posicionales
+cat > /etc/systemd/system/pve_exporter.service << 'EOF'
 [Unit]
 Description=Proxmox VE Prometheus Exporter
 After=network-online.target
 
 [Service]
-ExecStart=/usr/local/bin/pve_exporter /etc/pve_exporter.yml 9221 0.0.0.0
+Type=simple
+User=root
+ExecStart=/opt/pve_exporter/bin/pve_exporter \
+  --config.file /etc/pve_exporter/pve.yml \
+  --web.listen-address 0.0.0.0:9221
 Restart=always
+RestartSec=5
 
 [Install]
 WantedBy=multi-user.target
-SVCEOF
+EOF
 
 systemctl daemon-reload
 systemctl enable --now pve_exporter
-curl http://192.168.1.65:9221/pve?module=default | head -5
+systemctl status pve_exporter | grep Active
+
+# Verificar métricas
+curl -s http://localhost:9221/metrics | grep "pve_" | head -5
 ```
 
-### 12.2 adguard-exporter (on T430 — scrapes AdGuard remotely)
+**Errores comunes:**
+
+| Error | Causa | Fix |
+|---|---|---|
+| `pip3: command not found` | Debian minimal | `apt-get install -y python3-pip python3-venv` |
+| `No such file /usr/local/bin/pve_exporter` | Binario en venv | Usar `/opt/pve_exporter/bin/pve_exporter` |
+| `unrecognized arguments: /etc/pve_exporter.yml 9221` | Sintaxis v2 vs v3 | Usar `--config.file` y `--web.listen-address` |
+| `status=203/EXEC` | Ruta incorrecta | Verificar `which pve_exporter` dentro del venv |
+
+### 12.2 adguard-exporter (on T430 — scrapes AdGuard remotely) — INSTALADO ✅
+
+El exporter corre en el **T430** (no en el LXC de AdGuard) y consulta la API de AdGuard en `10.10.10.3:3000`. El target de Prometheus apunta al T430.
+
+**Agregar al docker-compose.yml del T430:**
+
+```yaml
+  adguard-exporter:
+    image: docker.io/ebrianne/adguard-exporter:latest
+    container_name: adguard-exporter
+    restart: unless-stopped
+    ports:
+      - "9617:9617"
+    environment:
+      - adguard_protocol=http
+      - adguard_hostname=10.10.10.3
+      - adguard_port=3000
+      - adguard_username=admin
+      - adguard_password=<ADGUARD_PASSWORD>
+      - interval=30s
+      - log_limit=10000
+    networks:
+      - monitoring
+```
 
 ```bash
-# Add to compose file or run standalone
-podman run -d \
-  --name adguard-exporter \
-  --network monitoring \
-  --restart unless-stopped \
-  -p 9617:9617 \
-  -e ADGUARD_HOSTNAME=10.10.10.3 \
-  -e ADGUARD_PORT=3000 \
-  -e ADGUARD_USERNAME=admin \
-  -e ADGUARD_PASSWORD=YOUR_ADGUARD_PASSWORD \
-  ebrianne/adguard-exporter:latest
-
-curl http://localhost:9617/metrics | head -5
+cd /opt/monitoring
+podman-compose up -d adguard-exporter
+sleep 10
+podman ps | grep adguard
+curl -s http://localhost:9617/metrics | grep "adguard_" | head -5
 ```
+
+**Target en prometheus.yml:**
+
+```yaml
+  - job_name: adguard
+    static_configs:
+      - targets: ["10.10.10.10:9617"]   # ← T430, NO el LXC 10.10.10.3
+        labels:
+          instance: adguard
+```
+
+> ⚠️ **Error común:** apuntar el target a `10.10.10.3:9617` (AdGuard LXC). El exporter corre en el **T430 (10.10.10.10:9617)**, no en el LXC.
+
+**Métricas disponibles:** DNS queries, ads bloqueados, top clients, top dominios bloqueados, tiempo de procesamiento.
 
 ### 12.3 node-exporter on K3s nodes
 
@@ -1502,7 +1606,7 @@ sudo df -h /srv/storage /srv/storage2
 
 | Servicio | Usuario | Contraseña | Notas |
 |---|---|---|---|
-| Grafana | admin | <REDACTED> | Cambiado de <REDACTED> — el `!` causa problemas en bash |
+| Grafana | admin | HomeLab2026x | Cambiado de HomeLab2026! — el `!` causa problemas en bash |
 | Prometheus | — | — | Sin autenticación |
 | Alertmanager | — | — | Sin autenticación |
 | Loki | — | — | Sin autenticación |

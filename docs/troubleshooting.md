@@ -625,136 +625,120 @@ kubectl -n kube-system logs -l k8s-app=cilium --tail=50
 kubectl -n longhorn-system logs -l app=longhorn-manager --tail=50
 ```
 
-## 12. Monitoring Stack (T430)
+---
 
-### Contenedor no arranca — permission denied
+## 13. Proxmox Monitoring — pve_exporter
 
-**Causa más común:** SELinux Enforcing bloquea acceso de contenedores a volúmenes del host.
+### pfSense muestra 101% de RAM en Proxmox UI
 
-```bash
-# Síntoma en logs
-sudo podman logs prometheus 2>&1 | grep "permission denied"
+**Causa:** FreeBSD no tiene balloon driver. Proxmox no puede consultar la RAM real del guest, reporta RAM asignada ≈ RAM usada. El host agrega ~40MB de overhead de QEMU.
 
-# Fix — el :z en los volume mounts re-etiqueta para SELinux
-# Verificar que todos los volumes en docker-compose.yml tengan :z
-grep -A2 "volumes:" /opt/monitoring/docker-compose.yml
-# Debe mostrar: /opt/monitoring/prometheus/data:/prometheus:z
-
-# Verificar UIDs
-stat -c '%u:%g' /opt/monitoring/prometheus/data   # → 65534:65534
-stat -c '%u:%g' /opt/monitoring/grafana/data      # → 472:472
-stat -c '%u:%g' /opt/monitoring/tempo/data        # → 10001:10001
-stat -c '%u:%g' /srv/storage                      # → 10001:10001
-
-# Reaplicar permisos si es necesario
-sudo chown -R 65534:65534 /opt/monitoring/prometheus/data
-sudo chown -R 65534:65534 /opt/monitoring/alertmanager/data
-sudo chown -R 472:472     /opt/monitoring/grafana/data
-sudo chown -R 10001:10001 /opt/monitoring/tempo/data
-sudo chown -R 10001:10001 /srv/storage
+```
+RAM asignada: 1024 MB
+QEMU overhead: ~40 MB
+Total reportado: 1064 MB = 103.66%
+RAM real usada: ~440 MB (confirmado con `top` en FreeBSD)
+Swap usado: 0 MB
 ```
 
-### Loki no arranca — delete-request-store error
+**No es un problema real.** Verificar dentro de pfSense:
 
 ```bash
-# Síntoma
-sudo podman logs loki 2>&1 | grep "delete-request-store"
-# Error: invalid compactor config: compactor.delete-request-store should be configured
-
-# Fix — agregar al compactor en loki.yml
-grep "delete_request_store" /opt/monitoring/loki/config/loki.yml
-# Debe existir: delete_request_store: filesystem
+# En pfSense shell (opción 8)
+top -n 1 | head -5
+# Mem: Xm Active, Xm Inact, Xm Wired, Xm Buf, Xm Free
+# Swap: X Total, X Free ← si Free = Total, no hay presión
 ```
 
-### Prometheus puerto 9090 ocupado por Cockpit
+**Fix cosmético — deshabilitar balloon:**
 
 ```bash
-# Verificar conflicto
-ss -tlnp | grep 9090
-# Si muestra cockpit: Prometheus debe usar 9091
-
-# Verificar mapeo en docker-compose
-grep "9091\|9090" /opt/monitoring/docker-compose.yml
-# Debe mostrar: "9091:9090"
-
-# Acceso externo siempre por 9091
-curl -sf http://localhost:9091/-/healthy
+# Proxmox shell — sin apagar pfSense
+qm set 100 --balloon 0
 ```
 
-### Grafana password — el ! rompe bash
-
-```bash
-# Síntoma: curl -u "admin:<REDACTED>" retorna 401
-# Causa: el ! es interpretado por bash como expansión de historia
-
-# Fix — resetear password sin caracteres especiales problemáticos
-sudo podman exec grafana grafana cli admin reset-admin-password <REDACTED>
-
-# Verificar
-curl -sf -u "admin:<REDACTED>" http://localhost:3000/api/org | grep name
-```
-
-### Grafana import dashboard vía API
-
-```bash
-# Descargar y preparar payload
-curl -fsSL -o /tmp/dash-1860.json \
-  "https://grafana.com/api/dashboards/1860/revisions/latest/download"
-
-python3 << 'PYEOF'
-import json
-with open('/tmp/dash-1860.json') as f:
-    dashboard = json.load(f)
-payload = {
-    "dashboard": dashboard,
-    "overwrite": True,
-    "inputs": [{"name": "DS_PROMETHEUS", "type": "datasource",
-                "pluginId": "prometheus", "value": "Prometheus"}],
-    "folderId": 0
-}
-with open('/tmp/payload-1860.json', 'w') as f:
-    json.dump(payload, f)
-PYEOF
-
-# Importar
-curl -s -X POST \
-  -u "admin:<REDACTED>" \
-  -H "Content-Type: application/json" \
-  http://localhost:3000/api/dashboards/import \
-  -d @/tmp/payload-1860.json | python3 -m json.tool | grep -E "status|url"
-```
-
-### Stack completo no responde — reinicio limpio
-
-```bash
-sudo bash << 'EOF'
-cd /opt/monitoring
-podman-compose down 2>/dev/null || true
-podman rm -f prometheus grafana loki tempo alertmanager 2>/dev/null || true
-sleep 5
-podman-compose up -d
-sleep 25
-echo "=== Health checks ==="
-curl -sf http://localhost:9091/-/healthy  && echo "[OK] Prometheus" || echo "[FAIL] Prometheus"
-curl -sf http://localhost:3000/api/health && echo "[OK] Grafana"    || echo "[FAIL] Grafana"
-curl -sf http://localhost:3100/ready      && echo "[OK] Loki"       || echo "[FAIL] Loki"
-curl -sf http://localhost:3200/ready      && echo "[OK] Tempo"      || echo "[FAIL] Tempo"
-curl -sf http://localhost:9093/-/healthy  && echo "[OK] Alertmanager" || echo "[FAIL] Alertmanager"
-EOF
-```
-
-### Verificar targets Prometheus
-
-```bash
-curl -s http://localhost:9091/api/v1/targets | \
-  python3 -c "
-import sys,json
-t=json.load(sys.stdin)['data']['activeTargets']
-for x in t:
-  print(f\"  {x['labels'].get('job','?'):25s} {x['health']:6s} {x['labels'].get('instance','?')}\")"
-```
+Proxmox dejará de calcular el porcentaje de forma incorrecta pero seguirá mostrando valores altos. Para métricas reales usar node_exporter (ver sección 12 del Monitoring Manual).
 
 ---
+
+### pve_exporter — Instalación en Proxmox Debian
+
+```bash
+# Proxmox (Debian) no tiene pip3 por defecto
+apt-get install -y python3-pip python3-venv
+
+# Instalar en virtualenv
+python3 -m venv /opt/pve_exporter
+/opt/pve_exporter/bin/pip install prometheus-pve-exporter
+
+# Config con API token (más seguro que user/password)
+mkdir -p /etc/pve_exporter
+cat > /etc/pve_exporter/pve.yml << 'EOF'
+default:
+  user: root@pam
+  token_name: pve-exporter
+  token_value: <TOKEN-UUID>
+  verify_ssl: false
+EOF
+chmod 600 /etc/pve_exporter/pve.yml
+
+# Servicio systemd — sintaxis pve_exporter v3.x
+cat > /etc/systemd/system/pve_exporter.service << 'EOF'
+[Unit]
+Description=Proxmox VE Prometheus Exporter
+After=network-online.target
+
+[Service]
+Type=simple
+User=root
+ExecStart=/opt/pve_exporter/bin/pve_exporter \
+  --config.file /etc/pve_exporter/pve.yml \
+  --web.listen-address 0.0.0.0:9221
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+systemctl daemon-reload
+systemctl enable --now pve_exporter
+curl -s http://localhost:9221/metrics | grep "pve_" | head -3
+```
+
+**Errores comunes:**
+
+| Error | Causa | Fix |
+|---|---|---|
+| `pip3: command not found` | Debian minimal | `apt-get install -y python3-pip python3-venv` |
+| `No such file /usr/local/bin/pve_exporter` | Binario en venv | Usar `/opt/pve_exporter/bin/pve_exporter` |
+| `unrecognized arguments: /etc/pve_exporter.yml 9221 0.0.0.0` | Sintaxis v2 (posicional) | Usar `--config.file` y `--web.listen-address` |
+| `status=203/EXEC` | Ruta incorrecta | Verificar ruta con `ls /opt/pve_exporter/bin/` |
+
+---
+
+### adguard-exporter — Target incorrecto
+
+**Síntoma:** `AdGuardDown` FIRING aunque AdGuard funciona.
+
+**Causa:** El exporter corre en el **T430 (10.10.10.10)**, no en el LXC de AdGuard (10.10.10.3). El target en prometheus.yml debe apuntar al T430.
+
+```bash
+# ❌ Incorrecto
+- targets: ["10.10.10.3:9617"]    # AdGuard LXC — no tiene el exporter
+
+# ✅ Correcto
+- targets: ["10.10.10.10:9617"]   # T430 — aquí corre el contenedor
+```
+
+Fix:
+
+```bash
+# En T430
+sed -i 's/10.10.10.3:9617/10.10.10.10:9617/' \
+  /opt/monitoring/prometheus/config/prometheus.yml
+curl -X POST http://localhost:9091/-/reload
+```
 
 | Error | Component | Fix |
 |---|---|---|
