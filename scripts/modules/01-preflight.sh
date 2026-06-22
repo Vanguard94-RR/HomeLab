@@ -132,6 +132,7 @@ if systemctl is-active --quiet firewalld 2>/dev/null; then
   declare -A PORTS_COMMON=(
     ["8472/udp"]="VXLAN overlay"
     ["10250/tcp"]="Kubelet"
+    ["9100/tcp"]="node-exporter (Prometheus scraping)"
     ["4240/tcp"]="Cilium health"
     ["4244/tcp"]="Cilium Hubble"
     ["4245/tcp"]="Cilium Hubble Relay"
@@ -228,6 +229,38 @@ if ip route show default | grep -q "$DEAD_GW"; then
   ok "Ruta muerta eliminada"
 else
   skip "Sin ruta muerta por $DEAD_GW"
+fi
+
+# -----------------------------------------------------------------------------
+# Ruta estática MGMT — para scraping de Prometheus (T430 → nodos K3s)
+# El T430 (10.10.10.10, VLAN 10) necesita scrapear :9100 en los nodos (VLAN 20)
+# Sin esta ruta, el nodo responde por WiFi y el T430 no recibe la respuesta
+# -----------------------------------------------------------------------------
+MGMT_CIDR="${MGMT_CIDR:-10.10.10.0/24}"
+MGMT_GW="${MGMT_GW:-10.10.20.1}"
+
+# Detectar interfaz ethernet VLAN 20
+VLAN20_IFACE=$(ip route show | grep "10.10.20" | awk '{print $3}' | head -1)
+
+if [[ -n "$VLAN20_IFACE" ]]; then
+  if ip route show | grep -q "$MGMT_CIDR"; then
+    skip "Ruta estática $MGMT_CIDR ya configurada"
+  else
+    info "Agregando ruta estática $MGMT_CIDR via $MGMT_GW dev $VLAN20_IFACE"
+    ip route add "$MGMT_CIDR" via "$MGMT_GW" dev "$VLAN20_IFACE" 2>/dev/null && ok "Ruta temporal agregada" || warn "ip route add falló (puede ya existir)"
+    # Persistir via NetworkManager
+    NM_CONN=$(nmcli -t -f NAME,DEVICE connection show --active 2>/dev/null | grep "$VLAN20_IFACE" | cut -d: -f1)
+    if [[ -n "$NM_CONN" ]]; then
+      nmcli connection modify "$NM_CONN" +ipv4.routes "$MGMT_CIDR $MGMT_GW" 2>/dev/null && \
+        nmcli connection up "$NM_CONN" >> "${LOG_FILE:-/dev/null}" 2>&1 && \
+        ok "Ruta $MGMT_CIDR persistida en NetworkManager ($NM_CONN)" || \
+        warn "No se pudo persistir la ruta en NetworkManager"
+    else
+      warn "No se encontró conexión NetworkManager para $VLAN20_IFACE — persistir manualmente"
+    fi
+  fi
+else
+  warn "No se detectó interfaz VLAN 20 — ruta MGMT no configurada"
 fi
 
 # -----------------------------------------------------------------------------

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # =============================================================================
-#  HomeLab -- Deploy Orquestador  v1.0
+#  HomeLab -- Deploy Orquestador  v1.1
 #  Se ejecuta desde el P53 (máquina de administración)
 #  Distribuye los scripts a los nodos y ejecuta el bootstrap
 #
@@ -281,6 +281,12 @@ fi
 log ""
 log "╔══════════════════════════════════════════════════════════╗"
 log "║  ${BOLD}DEPLOY COMPLETADO${NC}"
+log "╠══════════════════════════════════════════════════════════╣"
 log "║  Log completo: $LOG_FILE"
+log "║"
+log "║  Post-deploy manual:"
+log "║    1. Actualizar prometheus.yml en T430 con IPs K3s"
+log "║    2. curl -X POST http://10.10.10.10:9091/-/reload"
+log "║    3. Verificar: kubectl get pods -n monitoring"
 log "╚══════════════════════════════════════════════════════════╝"
 log ""

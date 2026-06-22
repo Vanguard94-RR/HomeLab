@@ -28,12 +28,16 @@
 | pve_exporter | Proxmox (192.168.1.65) | 9221 | ✅ UP |
 | adguard-exporter | T430 (10.10.10.10) | 9617 | ✅ UP |
 | node-exporter | T430 (self) | 9100 | ✅ UP |
+| node-exporter | dell-7490-1 (10.10.20.101) | 9100 | ✅ UP — DaemonSet K3s |
+| node-exporter | dell-7490-2 (10.10.20.102) | 9100 | ✅ UP — DaemonSet K3s |
+| node-exporter | t440p-storage (10.10.20.104) | 9100 | ✅ UP — DaemonSet K3s |
+| longhorn-manager | dell-7490-1 (10.10.20.101) | 30500 | ✅ UP — NodePort |
 
 **Alertas activas:**
 
 | Alerta | Estado | Razón |
 |---|---|---|
-| NodeDown (4) | ⚠️ PENDIENTE | K3s INSTALADO — targets prometheus.yml aún apuntan a IPs antiguas (ver Sección 13) |
+| NodeDown | ✅ RESUELTA | node-exporter DaemonSet desplegado + prometheus.yml corregido + rutas MGMT configuradas |
 | AdGuardDown | ✅ Resuelta | adguard-exporter operativo |
 | ProxmoxDown | ✅ Resuelta | pve_exporter operativo |
 | HighCPU/Memory/Disk | ✅ Inactivas | Lab saludable |
@@ -1192,7 +1196,7 @@ kubectl get pods -n monitoring
 
 ## 13. K3s Integration
 
-> **Estado Junio 2026:** K3s v1.35.5+k3s1 INSTALADO — 3 nodos Ready (dell-7490-1 10.10.20.101, dell-7490-2 10.10.20.102, t440p-storage 10.10.20.104). Longhorn v1.12.0 y Cilium v1.19.5 corriendo. **Pendiente:** actualizar prometheus.yml con targets correctos y configurar node_exporter DaemonSet.
+> **Estado Junio 2026 ✅ COMPLETADO:** K3s v1.35.5+k3s1 — 3 nodos Ready. node-exporter DaemonSet desplegado (namespace monitoring). prometheus.yml corregido con IPs reales. Rutas estáticas 10.10.10.0/24 persistidas via NetworkManager. Longhorn métricas via NodePort 30500. Todas las alertas Inactive (Firing: 0).
 
 ### 13.1 Get K3s token for Prometheus
 
@@ -1679,4 +1683,15 @@ EOF
 
 ---
 
-*Document v2.0 — T430 Dedicated Monitoring Server DEPLOYED · Enterprise HomeLab · June 2026*
+### Lecciones aprendidas — Sesión Junio 2026 (K3s integration)
+
+| Problema | Causa | Solución |
+|---|---|---|
+| node-exporter no instalado en nodos K3s | K3s no lo incluye por defecto | DaemonSet en namespace monitoring (módulo 07 IaC) |
+| Puerto 9100 bloqueado en nodos | firewalld no tenía regla para 9100 | `firewall-cmd --add-port=9100/tcp --permanent` (ahora en módulo 01) |
+| T430 no alcanzaba nodos K3s (:9100) | Nodos respondían por WiFi en lugar de VLAN 20 | Ruta estática `10.10.10.0/24 via 10.10.20.1` persistida en NM (ahora en módulo 01) |
+| IPs incorrectas en prometheus.yml | Conf anterior con IPs desactualizadas | Corregido: 101=dell-7490-1, 102=dell-7490-2, 104=t440p-storage |
+| Longhorn :9500 no accesible externamente | Service ClusterIP — solo interno al cluster | `helm upgrade --set service.manager.type=NodePort --set service.manager.nodePort=30500` |
+| pfSense node_exporter caído | Se cayó por desconocido | `service node_exporter start` + monitoreo activo |
+
+*Document v2.1 — T430 Dedicated Monitoring Server DEPLOYED · K3s Integration COMPLETADA · Enterprise HomeLab · June 2026*

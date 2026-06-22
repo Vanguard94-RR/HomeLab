@@ -98,6 +98,9 @@ if [[ "${DRY_RUN:-false}" == false ]]; then
     --set defaultSettings.defaultDataPath="${LONGHORN_DATA_PATH:-/var/lib/longhorn}" \
     --set persistence.defaultClass=true \
     --set persistence.defaultClassReplicaCount="${LONGHORN_REPLICA_COUNT:-2}" \
+    --set metrics.serviceMonitor.enabled=false \
+    --set service.manager.type=NodePort \
+    --set service.manager.nodePort=30500 \
     2>&1 | tee -a "${LOG_FILE:-/dev/null}"
 
   rc=${PIPESTATUS[0]}
@@ -147,6 +150,14 @@ if [[ "${DRY_RUN:-false}" == false ]]; then
   log ""
   info "StorageClasses disponibles:"
   kubectl get storageclass 2>/dev/null | tee -a "${LOG_FILE:-/dev/null}" || true
+
+  # Métricas — NodePort para Prometheus externo
+  log ""
+  info "Longhorn metrics endpoint (para Prometheus en T430):"
+  NODE_IP=$(kubectl get nodes -l node-role.kubernetes.io/control-plane=true \
+    -o jsonpath='{.items[0].status.addresses[?(@.type=="InternalIP")].address}' 2>/dev/null)
+  log "  Target Prometheus: ${NODE_IP}:30500"
+  log "  Actualizar prometheus.yml en T430: targets: [\"${NODE_IP}:30500\"]"
 
   log ""
   info "Pods Longhorn:"

@@ -137,6 +137,7 @@ declare -a MODULES=(
   "04:04-cilium.sh:Cilium CNI:server"
   "05:05-longhorn.sh:Longhorn Storage:server"
   "06:06-argocd.sh:ArgoCD GitOps:server"
+  "07:07-monitoring-agents.sh:Monitoring Agents (node-exporter DaemonSet):server"
 )
 
 # -----------------------------------------------------------------------------
@@ -268,10 +269,10 @@ if [[ $TOTAL_FAILED -eq 0 ]]; then
   if [[ "$ROLE" == "server" ]]; then
     log "║  Próximos pasos:"
     log "║    1. Verificar: kubectl get nodes -o wide"
-    log "║    2. Unir workers: sudo bash bootstrap.sh --role worker \\"
-    log "║         --server-ip ${NODE_IP} --token <TOKEN>"
-    log "║    3. ArgoCD UI: kubectl port-forward svc/argocd-server \\"
-    log "║         -n argocd 8080:443"
+    log "║    2. Verificar pods: kubectl get pods -A"
+    log "║    3. Unir workers via deploy.sh --only-workers"
+    log "║    4. ArgoCD UI: kubectl port-forward svc/argocd-server -n argocd 8080:443"
+    log "║    5. Longhorn UI: kubectl port-forward svc/longhorn-frontend -n longhorn-system 8081:80"
   else
     log "║  Próximos pasos:"
     log "║    1. Verificar desde el control-plane: kubectl get nodes"

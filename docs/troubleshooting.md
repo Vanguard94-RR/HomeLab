@@ -1,8 +1,8 @@
 # Enterprise HomeLab — Troubleshooting Reference
 
-**Version:** 1.0
-**Date:** May 2026
-**Scope:** Proxmox · pfSense · AdGuard · TL-SG108E · K3s · Cilium · Longhorn
+**Version:** 2.0
+**Date:** June 2026
+**Scope:** Proxmox · pfSense · AdGuard · TL-SG108E · K3s · Cilium · Longhorn · ArgoCD
 
 ---
 
@@ -12,13 +12,15 @@
 2. [pfSense](#2-pfsense)
 3. [AdGuard Home](#3-adguard-home)
 4. [TL-SG108E Switch](#4-tl-sg108e-switch)
-5. [K3s Node Preparation](#5-k3s-node-preparation)
-6. [K3s Cluster](#6-k3s-cluster)
+5. [K3s — Instalación](#5-k3s-instalacion)
+6. [K3s — Cluster Operativo](#6-k3s-cluster-operativo)
 7. [Cilium CNI](#7-cilium-cni)
 8. [Longhorn Storage](#8-longhorn-storage)
-9. [Network Connectivity](#9-network-connectivity)
-10. [DNS Resolution](#10-dns-resolution)
-11. [Quick Diagnostic Commands](#11-quick-diagnostic-commands)
+9. [ArgoCD](#9-argocd)
+10. [Network Connectivity](#10-network-connectivity)
+11. [DNS Resolution](#11-dns-resolution)
+12. [IaC Scripts](#12-iac-scripts)
+13. [Quick Diagnostic Commands](#13-quick-diagnostic-commands)
 
 ---
 
@@ -27,67 +29,42 @@
 ### VM/LXC has no network after reboot
 
 ```bash
-# Check if bridge is VLAN-aware
-cat /sys/class/net/vmbr1/bridge/vlan_filtering
-# Expected: 1
-
-# Check VM VLAN tag
+cat /sys/class/net/vmbr1/bridge/vlan_filtering   # Expected: 1
 qm config VMID | grep net
-
-# Restart VM to re-create tap interface with correct VLAN
 qm stop VMID && qm start VMID
 ```
 
-**Root cause:** `bridge-vlan-aware yes` or `bridge-vids 2-4094` missing from `/etc/network/interfaces`. See `HomeLab-Proxmox-VLAN-Persistence.md`.
-
----
+**Root cause:** `bridge-vlan-aware yes` o `bridge-vids 2-4094` faltantes en `/etc/network/interfaces`.
 
 ### LXC container won't start after network change
 
 ```bash
-# Check container config
 pct config 101
-
-# Check for bridge errors
 journalctl -u pve-manager --no-pager | tail -20
-
-# Force restart
 pct stop 101 && pct start 101
 pct status 101
 ```
 
----
-
-### `Failed to create network device` on LXC start
-
-**Cause:** `tag=` parameter on a non-VLAN-aware bridge.
-
-```bash
-# Verify vmbr1 is VLAN-aware
-bridge vlan show dev vmbr1 | head -5
-
-# Fix: ensure /etc/network/interfaces has:
-# bridge-vlan-aware yes
-# bridge-vids 2-4094
-# then:
-ifreload -a
-pct start 101
-```
-
----
-
 ### Proxmox web UI unreachable
 
 ```bash
-# Check service
 systemctl status pveproxy
-
-# Restart if needed
 systemctl restart pveproxy
-
-# Check port
 ss -tlnp | grep 8006
 ```
+
+### pfSense RAM al 101% en Proxmox
+
+**Causa:** FreeBSD no tiene driver balloon de QEMU. Proxmox reporta uso incorrecto.
+
+```bash
+# Fix: deshabilitar balloon
+qm set 100 --balloon 0
+# Reducir RAM a valor real (1GB es suficiente para pfSense)
+qm set 100 --memory 1024
+```
+
+**Estado:** Resuelto en Junio 2026. RAM real ~440MB, swap=0.
 
 ---
 
@@ -96,763 +73,532 @@ ss -tlnp | grep 8006
 ### pfSense VM not routing between VLANs
 
 ```bash
-# On Proxmox, verify VM net1 has no VLAN tag (trunk mode)
+# En Proxmox — net1 debe ir sin tag (trunk mode)
 qm config 100 | grep net1
-# Expected: bridge=vmbr1,firewall=0  (NO tag= parameter)
-
-# Check pfSense sub-interfaces
-# In pfSense: Interfaces → Interface Assignments
-# Each VLAN should have its own OPT interface
+# Expected: net1=virtio=...,bridge=vmbr1  (sin tag=)
 ```
 
----
-
-### DHCP not assigning IPs on a VLAN
+### node_exporter en pfSense
 
 ```bash
-# On client — force DHCP renewal
-sudo dhclient -r enp0s25 && sudo dhclient enp0s25
+# Verificar servicio
+service node_exporter status
+sockstat -l | grep 9100
 
-# Verify DHCP is enabled in pfSense
-# Services → DHCP Server → VLAN_XX → Enable DHCP server on this interface
+# Si no arranca
+/usr/local/etc/rc.d/node_exporter start
 
-# Check DHCP range is configured
-# Range: 10.10.20.100 – 10.10.20.200 for VLAN 20
+# Verificar en Prometheus
+curl -s http://10.10.10.1:9100/metrics | head -5
 ```
 
----
-
-### Client gets wrong VLAN IP (e.g. 10.10.10.x instead of 10.10.20.x)
-
-**Cause:** Switch PVID misconfigured for that port.
-
-```bash
-# Check switch — access http://10.10.10.2
-# VLAN → 802.1Q PVID Setting
-# Verify the port has PVID = 20, not 10 or 1
+**Configuración Prometheus:**
+```yaml
+- job_name: pfsense
+  static_configs:
+    - targets: ['10.10.10.1:9100']
+  relabel_configs:
+    - target_label: nodename
+      replacement: pfsense
 ```
 
----
-
-### pfSense web UI unreachable after RAM reduction
-
-The M720q pfSense VM was reduced from 4.5GB → 2GB RAM. If unresponsive:
+### pfSense QEMU Guest Agent
 
 ```bash
-# Check VM status
-qm status 100
-
-# Increase RAM if needed
-qm stop 100
-qm set 100 --memory 2048
-qm start 100
+# Dentro de pfSense shell
+service qemu-guest-agent status
+# Si no está instalado:
+pkg install -y qemu-guest-agent
+echo 'qemu_guest_agent_enable="YES"' >> /etc/rc.conf
+# Requiere virtio-serial device + cold start en Proxmox
 ```
 
 ---
 
 ## 3. AdGuard Home
 
-### AdGuard web UI unreachable at 10.10.10.3:3000 or 192.168.1.100:3000
+### AdGuard not resolving
 
 ```bash
-# Verify LXC is running
-pct status 101
-
-# Check AdGuard service
-pct exec 101 -- rc-service AdGuardHome status
-# Expected: status: started
-
-# Check ports
-pct exec 101 -- ss -tlnp | grep -E '53|3000'
-
-# Restart if needed
-pct exec 101 -- rc-service AdGuardHome restart
+# Verificar servicio en T430
+systemctl status adguardhome
+curl -s http://10.10.10.10:3000  # UI
+dig @10.10.10.3 google.com       # Test DNS
 ```
 
----
+### adguard-exporter target incorrecto
 
-### DNS not resolving from a VLAN client
+**Problema:** Target configurado como `10.10.10.3:9617` en lugar de `10.10.10.10:9617`.
 
-```bash
-# Test AdGuard directly
-nslookup google.com 10.10.10.3
-
-# Verify DHCP is distributing AdGuard as DNS
-# pfSense: Services → DHCP Server → VLAN_XX → DNS Server = 10.10.10.3
-
-# Force DHCP renewal on client
-sudo nmcli connection down "Wired connection 1"
-sudo nmcli connection up "Wired connection 1"
+**Fix en prometheus.yml:**
+```yaml
+- job_name: adguard
+  static_configs:
+    - targets: ['10.10.10.10:9617']  # T430, no AdGuard IP
 ```
 
----
-
-### `.mgmt` DNS rewrites not resolving from daily driver (P53)
-
-```bash
-# Verify P53 is using AdGuard as DNS
-resolvectl status | grep -A5 wlp82s0
-# Current DNS Server: 192.168.1.100
-
-# If not, fix NetworkManager
-nmcli connection modify "INFINITUMC241" ipv4.dns "192.168.1.100" ipv4.ignore-auto-dns yes
-nmcli connection up "INFINITUMC241"
-
-# Test rewrite
-nslookup proxmox.mgmt
-# Expected: 192.168.1.65
-```
-
----
-
-### AdGuard is dual-homed but only responds on one interface
-
-```bash
-# Verify both interfaces
-pct exec 101 -- ip addr show eth0
-pct exec 101 -- ip addr show eth1
-
-# Verify routing table (default must be via eth0/pfSense)
-pct exec 101 -- ip route
-# Expected:
-# default via 10.10.10.1 dev eth0
-# 192.168.1.0/24 dev eth1 scope link
-
-# If wrong default route — restart container
-pct reboot 101
-```
+**Estado:** Resuelto en Junio 2026.
 
 ---
 
 ## 4. TL-SG108E Switch
 
-### Switch management UI unreachable at 10.10.10.2
+### Switch unreachable at 10.10.10.2
 
 ```bash
-# You must be on a device with IP in 10.10.10.x (VLAN 10 MGMT)
-# Windows VM 199 at 10.10.10.50 can reach it
-# Or from Proxmox: ping 10.10.10.2
-
-# If unreachable, check switch port 1 PVID and trunk config
-# Port 1 should be tagged member of VLAN 10 in 802.1Q table
+# Desde T430 en VLAN 10
+ping 10.10.10.2
+# Si no responde, verificar que P7 del switch tiene PVID 10
 ```
+
+### Port not in correct VLAN
+
+Verificar en la UI web del switch (http://10.10.10.2):
+- 802.1Q VLAN → cada puerto tiene PVID correcto
+- P1: trunk (tagged 10,20,90)
+- P2-6: PVID 20 (untagged)
+- P7: PVID 10 (untagged)
+- P8: PVID 90 (untagged)
 
 ---
 
-### Port connected but no link / wrong VLAN
+## 5. K3s — Instalación
 
-1. Verify cable is properly seated
-2. Check **802.1Q PVID Setting** — port must have PVID matching intended VLAN
-3. Check **802.1Q VLAN** — port must be **Untagged** member of that VLAN
+### sudo sin TTY al ejecutar via SSH
+
+```bash
+# Error: sudo: a terminal is required to read the password
+# Fix: configurar NOPASSWD
+echo 'admin ALL=(ALL) NOPASSWD: ALL' | sudo tee /etc/sudoers.d/admin-nopasswd
+chmod 440 /etc/sudoers.d/admin-nopasswd
+```
+
+### Workers sin internet (ruta default muerta)
+
+```bash
+ip route show default
+# Si aparece: default via 10.10.20.1 dev enp0s31f6 metric 100
+# Fix:
+sudo ip route del default via 10.10.20.1
+# Verificar que queda solo la ruta WiFi
+ip route show default
+```
+
+**El módulo 01-preflight.sh detecta y elimina esta ruta automáticamente.**
+
+### K3s agent falla con "connection refused"
+
+```bash
+# Verificar conectividad al control-plane
+curl -k https://10.10.20.101:6443
+# Si falla, el worker no tiene ruta al CP
+
+# Verificar ruta
+ip route show default
+# El worker debe poder alcanzar 10.10.20.101
+```
+
+### etcd mismatch de IP tras cambio de node-ip
+
+```bash
+# Error: Found [dell-7490-1=https://192.168.1.139:2380]
+#        expect: dell-7490-1=https://10.10.20.101:2380
+
+# NO intentar reparar — desinstalar y reinstalar
+sudo /usr/local/bin/k3s-uninstall.sh
+# Verificar IP ethernet correcta ANTES de reinstalar
+ip addr show enp0s31f6 | grep inet
+# Reinstalar con IP correcta
+sudo bash bootstrap.sh --role server --node-ip 10.10.20.101
+```
+
+### NetworkManager: Connected pero sin IP
+
+```bash
+nmcli device status   # muestra "connected" pero...
+ip addr show enp0s31f6  # NO-CARRIER o sin inet
+
+# Fix:
+nmcli connection down enp0s31f6 && nmcli connection up enp0s31f6
+ip addr show enp0s31f6 | grep inet
+# Debe mostrar 10.10.20.X/24
+```
+
+### k3s-selinux no disponible en Fedora 42
 
 ```
-VLAN 20 → Ports 2, 3, 4, 5, 6 as Untagged
-VLAN 10 → Port 1 as Tagged (trunk)
-VLAN 90 → Port 8 as Untagged (Parrot OS)
+Error: No match for argument: k3s-selinux
 ```
+
+**Causa:** Paquete solo en repos RHEL/CentOS. En Fedora 42 es suficiente `container-selinux`.
+**Acción:** Ignorar — es un warning, no un error crítico.
 
 ---
 
-## 5. K3s Node Preparation
+## 6. K3s — Cluster Operativo
 
-### Pre-check script exits with warnings
+### Nodo NotReady
 
 ```bash
-# Re-run after fixes
-./homelab-k3s-precheck.sh --role master    # Dell 7490 #1
-./homelab-k3s-precheck.sh --role worker    # all others
-
-# Common warnings and fixes:
-# [WARN] Swap enabled → sudo swapoff -a && sed -i '/swap/s/^/#/' /etc/fstab
-# [WARN] SELinux Enforcing → see prefix script FIX 3
-# [WARN] firewalld ports missing → sudo firewall-cmd --permanent --add-port=6443/tcp && sudo firewall-cmd --reload
-# [WARN] br_netfilter not loaded → sudo modprobe br_netfilter
-# [WARN] Time not synced → sudo timedatectl set-ntp true
+kubectl describe node <nodo>
+kubectl logs -n kube-system -l k8s-app=cilium \
+  --field-selector spec.nodeName=<nodo>
+ssh admin@<ip> "sudo journalctl -u k3s-agent -n 50 --no-pager"
 ```
 
----
-
-### k3s-selinux RPM install fails (404)
-
-The Rancher RPM repo (`rpm.rancher.io`) is deprecated for Fedora 42. Use GitHub releases:
+### Pod en Pending
 
 ```bash
-curl -fsSL -o /tmp/k3s-selinux.rpm \
-  https://github.com/k3s-io/k3s-selinux/releases/download/v1.6.latest.1/k3s-selinux-1.6-1.el9.noarch.rpm
-sudo dnf install -y /tmp/k3s-selinux.rpm
-rpm -q k3s-selinux
+kubectl describe pod <pod> -n <namespace>
+# Buscar: Insufficient cpu/memory, no nodes available,
+#         PVC pending, taint/toleration issues
 ```
 
----
-
-### firewall-cmd --query-port returns false even though port is open
-
-Known issue on Fedora 42 — `--query-port` may not match correctly. Use `--list-ports` instead:
+### Token del cluster
 
 ```bash
-sudo firewall-cmd --list-ports --permanent
-# Verify: 6443/tcp 10250/tcp 8472/udp 51820/udp
+ssh admin@10.10.20.101 "sudo cat /var/lib/rancher/k3s/server/node-token"
+# o
+ssh admin@10.10.20.101 "cat /tmp/k3s-node-token.txt"
 ```
 
-The pre-check and prefix scripts (v1.2+) already use `--list-ports` to avoid this.
-
----
-
-## 6. K3s Cluster
-
-### Node shows NotReady after K3s server install
-
-**This is expected** when Cilium has not been installed yet. Nodes go `NotReady` without a CNI.
+### kubeconfig en P53
 
 ```bash
-# Install Cilium immediately after K3s server
-helm install cilium cilium/cilium \
-  --namespace kube-system \
-  --set k8sServiceHost=10.10.20.100 \
-  --set k8sServicePort=6443 \
-  --set flannel-backend=none
-
-# Watch for Ready
-kubectl -n kube-system rollout status daemonset/cilium
+scp admin@10.10.20.101:/home/admin/.kube/config ~/.kube/config
+export KUBECONFIG=~/.kube/config
 kubectl get nodes
 ```
 
----
-
-### Worker node fails to join cluster
+### Reinstalación limpia del cluster
 
 ```bash
-# Verify token is correct (on master)
-sudo cat /var/lib/rancher/k3s/server/node-token
+# Workers primero
+for NODE in 10.10.20.102 10.10.20.104; do
+  ssh admin@$NODE "sudo /usr/local/bin/k3s-agent-uninstall.sh"
+done
 
-# Verify API is reachable from worker
-curl -k https://10.10.20.100:6443/healthz
-# Expected: ok
+# Control-plane
+ssh admin@10.10.20.101 "sudo /usr/local/bin/k3s-uninstall.sh"
 
-# Check firewalld on master allows 6443
-sudo firewall-cmd --list-ports | grep 6443
-
-# Check k3s-agent logs on worker
-sudo journalctl -u k3s-agent -f
-```
-
----
-
-### etcd slow / leader elections
-
-**Cause:** Root disk is HDD (only relevant for T440p if used as control-plane, which is NOT recommended).
-
-```bash
-# Check disk type
-cat /sys/block/$(findmnt -n -o SOURCE / | xargs lsblk -no pkname)/queue/rotational
-# 0 = SSD ✓ / 1 = HDD ✗
-
-# Check etcd latency
-sudo kubectl -n kube-system exec -it etcd-$(hostname) -- \
-  etcdctl endpoint health --cluster
-```
-
-> **Prevention:** Dell 7490 #1 is the control-plane. Its 256GB SSD ensures etcd latency <10ms.
-
----
-
-### Pod stuck in Pending
-
-```bash
-# Check events
-kubectl describe pod POD_NAME -n NAMESPACE
-
-# Check node resources
-kubectl describe nodes | grep -A5 "Allocated resources"
-
-# Check taints
-kubectl describe node NODE_NAME | grep Taints
-# T440p: storage=preferred:PreferNoSchedule
-# P52: gpu=true:NoSchedule
+# Reinstalar todo con un comando
+cd ~/Documents/Personal/HomeLab/scripts
+bash deploy.sh
 ```
 
 ---
 
 ## 7. Cilium CNI
 
-### Cilium pods in CrashLoopBackOff
+### Cilium pods en CrashLoopBackOff
 
 ```bash
-# Check logs
-kubectl -n kube-system logs -l k8s-app=cilium --previous
-
-# Common cause: K3s was not installed with --flannel-backend=none
-# Fix: reinstall K3s with correct flags
-curl -sfL https://get.k3s.io | \
-  INSTALL_K3S_EXEC="--flannel-backend=none --disable-network-policy --disable=traefik" sh -
+kubectl logs -n kube-system -l k8s-app=cilium
+cilium status
+cilium connectivity test
 ```
 
----
+### Pods en Pending (CNI no configurado)
 
-### Pod-to-pod communication fails
+Los pods quedan en Pending hasta que Cilium esté Running. Es esperado durante la instalación.
 
 ```bash
-# Verify pod CIDRs are in firewalld trusted zone on ALL nodes
-sudo firewall-cmd --list-all --zone=trusted | grep source
-# Expected: 10.42.0.0/16 and 10.43.0.0/16
+# Verificar Cilium Running
+kubectl get pods -n kube-system -l k8s-app=cilium
+# Todos deben estar 1/1 Running
 
-# If missing:
-sudo firewall-cmd --permanent --zone=trusted --add-source=10.42.0.0/16
-sudo firewall-cmd --permanent --zone=trusted --add-source=10.43.0.0/16
-sudo firewall-cmd --reload
+# Si no, verificar API server IP en helm values
+helm get values cilium -n kube-system | grep k8sService
 ```
 
----
-
-### Hubble UI not accessible
+### Hubble UI no accesible
 
 ```bash
-# Verify Hubble relay is running
-kubectl -n kube-system get pods | grep hubble
-
-# Port-forward for local access
-kubectl -n kube-system port-forward svc/hubble-ui 12000:80
-
-# Access at http://localhost:12000
+kubectl port-forward svc/hubble-ui -n kube-system 8082:80
+# http://localhost:8082
 ```
 
 ---
 
 ## 8. Longhorn Storage
 
-### Longhorn volume stuck in Degraded
+### longhorn-manager 1/2 (admission webhook falla)
 
 ```bash
-# Check replicas
-kubectl -n longhorn-system get replicas
+# Verificar iscsid en el nodo afectado
+kubectl get pod <manager-pod> -n longhorn-system -o wide
+# Ver en qué nodo está
+ssh admin@<node-ip> "systemctl is-active iscsid"
 
-# Verify T440p storage node is healthy
-kubectl get nodes | grep t440p-storage
-# Must show Ready
+# Si no está activo:
+ssh admin@<node-ip> "sudo systemctl enable --now iscsid"
+```
 
-# Check Longhorn manager on T440p
-kubectl -n longhorn-system logs -l app=longhorn-manager \
-  --field-selector spec.nodeName=t440p-storage
+**Causa raíz:** `iscsid` no instalado/activo. Longhorn usa iSCSI para block storage.
+**Prevención:** El módulo 01-preflight.sh lo instala automáticamente.
+
+### longhorn-driver-deployer en Init:0/1
+
+Espera al `longhorn-manager`. Se resuelve solo cuando el manager esté 2/2 Running.
+
+### Longhorn UI
+
+```bash
+kubectl port-forward svc/longhorn-frontend -n longhorn-system 8081:80
+# http://localhost:8081
+```
+
+### PVC en Pending
+
+```bash
+kubectl describe pvc <nombre>
+# Verificar StorageClass
+kubectl get storageclass
+# longhorn debe ser (default)
 ```
 
 ---
 
-### T440p HDD paths not visible to Longhorn
+## 9. ArgoCD
+
+### Password admin inicial
 
 ```bash
-# On T440p, verify disks
-lsblk
+kubectl -n argocd get secret argocd-initial-admin-secret \
+  -o jsonpath="{.data.password}" | base64 -d && echo
+# También en /tmp/argocd-admin-pass.txt en el control-plane
+```
+
+### ArgoCD UI
+
+```bash
+kubectl port-forward svc/argocd-server -n argocd 8080:443
+# https://localhost:8080
+# Usuario: admin
+```
+
+### App out of sync
+
+```bash
+argocd app sync <app-name>
+# o desde la UI: Sync button
+```
+
+---
+
+## 10. Network Connectivity
+
+### Nodo sin acceso a internet
+
+```bash
+# Verificar ruta default
+ip route show default
+
+# Si hay ruta muerta por 10.10.20.1:
+sudo ip route del default via 10.10.20.1
+
+# Verificar conectividad
+curl -s --max-time 5 -o /dev/null -w '%{http_code}' https://github.com
+# Expected: 200
+```
+
+### P53 sin acceso a VLANs del lab
+
+```bash
+# Verificar rutas estáticas
+ip route | grep 10.10
 # Expected:
-# sda (SSD 512GB — OS)
-# sdb (HDD 1TB — Longhorn)
-# sdc (HDD 1TB — Longhorn)
+# 10.10.10.0/24 via 192.168.1.131 dev wlp82s0
+# 10.10.20.0/24 via 192.168.1.131 dev wlp82s0
 
-# In Longhorn UI: Node → t440p-storage → Edit → Add Disk
-# Path: /var/lib/longhorn-hdd1 and /var/lib/longhorn-hdd2
-# (after mounting sdb and sdc to those paths)
-```
-
----
-
-### PVC stuck in Pending
-
-```bash
-kubectl describe pvc PVC_NAME -n NAMESPACE
-
-# Common causes:
-# - No storage class available → kubectl get storageclass
-# - Insufficient Longhorn replicas → check node count
-# - Longhorn manager not running → kubectl -n longhorn-system get pods
-```
-
----
-
-## 9. Network Connectivity
-
-### Cannot ping between VLANs
-
-```bash
-# Verify pfSense firewall rules allow the traffic
-# pfSense: Firewall → Rules → VLAN_XX
-
-# Test from pfSense shell (Diagnostics → Command Prompt)
-ping -c 3 10.10.20.100    # VLAN 20 from VLAN 10
-
-# Verify both interfaces are UP in pfSense
-# Interfaces → Interface Assignments
-```
-
----
-
-### No internet from VLAN 20/30
-
-```bash
-# Test from a node
-ping 8.8.8.8
-
-# If ping fails, check pfSense NAT
-# pfSense: Firewall → NAT → Outbound
-# Hybrid or Manual mode must include VLAN 20/30 subnets
-
-# Check pfSense WAN interface is up
-# Status → Interfaces → WAN
-```
-
----
-
-### T440p storage node can't reach cluster nodes
-
-T440p is in VLAN 20. All K3s nodes are in VLAN 20. Check switch port 5 configuration:
-
-```bash
-# Verify PVID on switch port 5
-# http://10.10.10.2 → VLAN → 802.1Q PVID Setting → Port 5 = 20
-
-# On T440p, verify IP is in VLAN 20 range
-ip addr show enp0s25
-# Expected: 10.10.20.104/24
-```
-
----
-
-## 10. DNS Resolution
-
-### DNS rewrite not resolving (e.g. `k3s.mgmt`)
-
-```bash
-# Test directly against AdGuard
-nslookup k3s.mgmt 10.10.10.3
-nslookup k3s.mgmt 192.168.1.100
-
-# If it resolves directly but not from system DNS,
-# check that NetworkManager is using AdGuard:
-resolvectl status | grep "DNS Server"
-
-# Fix if needed (P53 daily driver)
+# Si no existen, agregar:
 nmcli connection modify "INFINITUMC241" \
-  ipv4.dns "192.168.1.100" ipv4.ignore-auto-dns yes
+  +ipv4.routes "10.10.10.0/24 192.168.1.131" \
+  +ipv4.routes "10.10.20.0/24 192.168.1.131"
 nmcli connection up "INFINITUMC241"
 ```
 
 ---
 
-### DNS rewrites to update after K3s install
+## 11. DNS Resolution
 
-After Cilium L2 LB assigns IPs to services, update AdGuard DNS rewrites:
+### Resolución falla para hostnames del lab
 
+```bash
+# Verificar DNS
+resolvectl status | grep "DNS Server"
+# Expected: 192.168.1.100 (AdGuard)
+
+# Test
+dig @10.10.10.3 grafana.mgmt
+nslookup grafana.mgmt 10.10.10.3
 ```
-Filters → DNS Rewrites → Add DNS rewrite
 
-argocd.lab.internal    → <MetalLB IP>
-gitea.lab.internal     → <MetalLB IP>
-grafana.lab.internal   → <MetalLB IP>
-harbor.lab.internal    → <MetalLB IP>
-hubble.lab.internal    → <MetalLB IP>
-kiali.lab.internal     → <MetalLB IP>
-ollama.lab.internal    → <MetalLB IP>
+### Browsers ignoran DNS del sistema
+
+Agregar a /etc/hosts para acceso desde browser:
+```bash
+echo "10.10.10.10  grafana.mgmt prometheus.mgmt alertmanager.mgmt" | sudo tee -a /etc/hosts
+echo "10.10.10.1   pfsense.mgmt" | sudo tee -a /etc/hosts
 ```
 
 ---
 
-## 11. Quick Diagnostic Commands
+## 12. IaC Scripts
 
-### Full lab health check
+### deploy.sh falla al copiar scripts
 
 ```bash
-# Proxmox — all VMs/LXCs
-qm list && pct list
+# Verificar que el tarball existe
+ls ~/Documents/Personal/HomeLab/scripts/homelab-scripts.tar.gz
 
-# pfSense connectivity
-ping -c 2 10.10.10.1   # pfSense LAN
-ping -c 2 10.10.10.3   # AdGuard
-
-# AdGuard DNS
-nslookup google.com 10.10.10.3
-nslookup proxmox.mgmt
-
-# K3s cluster (from control-plane)
-sudo kubectl get nodes -o wide
-sudo kubectl get pods -A | grep -v Running
-sudo kubectl top nodes
-
-# Cilium health
-sudo kubectl -n kube-system exec -it ds/cilium -- cilium status
-
-# Longhorn
-sudo kubectl -n longhorn-system get pods
-sudo kubectl get pvc -A
-
-# Switch reachability
-ping -c 2 10.10.10.2
-
-# VLAN 20 nodes
-ping -c 1 10.10.20.100   # dell-7490-1
-ping -c 1 10.10.20.101   # dell-7490-2
-ping -c 1 10.10.20.102   # dell-5480
-ping -c 1 10.10.20.103   # p52
-ping -c 1 10.10.20.104   # t440p-storage
+# Verificar SSH sin password
+ssh admin@10.10.20.101 "echo OK"
 ```
 
-### Service restart order (after full power cycle)
+### Módulo falla con "ya configurado" pero no funciona
 
 ```bash
-# 1. M720q boots → Proxmox starts
-# 2. LXC 101 (AdGuard) — starts automatically (onboot=1)
-# 3. VM 100 (pfSense) — starts automatically (onboot=1)
-# 4. K3s nodes boot → k3s-agent starts automatically
-# 5. Verify: kubectl get nodes (all Ready within ~60s)
+# Ejecutar módulo específico con logs detallados
+ssh admin@10.10.20.101 \
+  "sudo bash ~/Documents/Personal/HomeLab/scripts/bootstrap.sh \
+   --role server --only 04"
+
+# Ver log completo
+ssh admin@10.10.20.101 "sudo cat /tmp/homelab-bootstrap-*.log | tail -50"
 ```
 
-### Useful log commands
+### Bootstrap detecta K3s ya instalado pero quieres reinstalar
 
 ```bash
-# AdGuard
-pct exec 101 -- tail -f /var/log/AdGuardHome/AdGuardHome.log
+# Desinstalar primero
+ssh admin@10.10.20.101 "sudo /usr/local/bin/k3s-uninstall.sh"
+# Luego reinstalar
+bash deploy.sh --only-cp
+```
 
-# pfSense (from pfSense shell)
-clog /var/log/system.log
+---
 
+## 13. Monitoring K3s Integration
+
+### node-exporter no responde desde T430
+
+```bash
+# 1. Verificar que DaemonSet existe
+kubectl get daemonset node-exporter -n monitoring
+
+# 2. Verificar pods Running
+kubectl get pods -n monitoring -o wide
+
+# 3. Verificar puerto 9100 abierto en nodo
+ssh admin@<node-ip> "sudo firewall-cmd --list-ports | grep 9100"
+# Si no: sudo firewall-cmd --add-port=9100/tcp --permanent && sudo firewall-cmd --reload
+
+# 4. Verificar ruta de retorno en el nodo
+ssh admin@<node-ip> "ip route get 10.10.10.10"
+# Debe mostrar: via 10.10.20.1 dev enp0s31f6 src 10.10.20.X
+# Si muestra WiFi: sudo ip route add 10.10.10.0/24 via 10.10.20.1 dev enp0s31f6
+
+# 5. Verificar desde T430
+ssh admin@10.10.10.10 "curl -s --max-time 3 -o /dev/null -w '%{http_code}' http://<node-ip>:9100/metrics"
+# Expected: 200
+```
+
+### Longhorn métricas no accesibles
+
+```bash
+# Verificar que el Service es NodePort
+kubectl get svc longhorn-backend -n longhorn-system
+# Si es ClusterIP, hacer upgrade:
+KUBECONFIG=/etc/rancher/k3s/k3s.yaml helm upgrade longhorn longhorn/longhorn \
+  -n longhorn-system --reuse-values \
+  --set service.manager.type=NodePort \
+  --set service.manager.nodePort=30500
+
+# Verificar desde T430
+ssh admin@10.10.10.10 "curl -s --max-time 3 -o /dev/null -w '%{http_code}' http://10.10.20.101:30500/metrics"
+```
+
+### pfSense node_exporter caído
+
+```bash
+ssh admin@10.10.10.1 "service node_exporter status"
+ssh admin@10.10.10.1 "service node_exporter start"
+# Verificar: curl -s http://10.10.10.1:9100/metrics | head -3
+```
+
+### Prometheus targets todos down tras reinstalación K3s
+
+```bash
+# 1. Re-desplegar node-exporter DaemonSet
+sudo bash bootstrap.sh --role server --only 07
+
+# 2. Reabrir puerto 9100 (si se reinstalaron los nodos)
+for NODE in 10.10.20.101 10.10.20.102 10.10.20.104; do
+  ssh admin@$NODE "sudo firewall-cmd --add-port=9100/tcp --permanent && sudo firewall-cmd --reload"
+done
+
+# 3. Re-verificar rutas MGMT
+for NODE in 192.168.1.139 192.168.1.141 192.168.1.89; do
+  ssh admin@$NODE "ip route get 10.10.10.10"
+done
+
+# 4. Recargar Prometheus
+curl -X POST http://10.10.10.10:9091/-/reload
+```
+
+---
+
+## 14. Quick Diagnostic Commands
+
+### Estado completo del cluster
+
+```bash
+kubectl get nodes -o wide
+kubectl get pods -A
+kubectl get pods -A | grep -v Running    # solo problemas
+kubectl top nodes                         # recursos
+```
+
+### Estado de todos los servicios
+
+```bash
+# Proxmox
+ssh root@192.168.1.65 "qm list && pct list"
+
+# K3s nodos
+for NODE in 10.10.20.101 10.10.20.102 10.10.20.104; do
+  echo -n "$NODE: "
+  ssh admin@$NODE "systemctl is-active k3s 2>/dev/null || systemctl is-active k3s-agent 2>/dev/null"
+done
+
+# Monitoring (T430)
+ssh admin@10.10.10.10 "cd /opt/monitoring && sudo podman-compose ps"
+
+# pfSense node_exporter
+curl -s --max-time 3 http://10.10.10.1:9100/metrics | head -3
+```
+
+### Logs rápidos
+
+```bash
 # K3s server
-sudo journalctl -u k3s -f
+ssh admin@10.10.20.101 "sudo journalctl -u k3s -n 30 --no-pager"
 
 # K3s agent
-sudo journalctl -u k3s-agent -f
+ssh admin@10.10.20.102 "sudo journalctl -u k3s-agent -n 30 --no-pager"
 
 # Cilium
-kubectl -n kube-system logs -l k8s-app=cilium --tail=50
+kubectl logs -n kube-system -l k8s-app=cilium --tail=20
 
 # Longhorn
-kubectl -n longhorn-system logs -l app=longhorn-manager --tail=50
+kubectl logs -n longhorn-system -l app=longhorn-manager --tail=20
+
+# ArgoCD
+kubectl logs -n argocd -l app.kubernetes.io/name=argocd-server --tail=20
 ```
 
 ---
 
-## 13. Proxmox Monitoring — pve_exporter
-
-### pfSense muestra 101% de RAM en Proxmox UI
-
-**Causa:** FreeBSD no tiene balloon driver. Proxmox no puede consultar la RAM real del guest, reporta RAM asignada ≈ RAM usada. El host agrega ~40MB de overhead de QEMU.
-
-```
-RAM asignada: 1024 MB
-QEMU overhead: ~40 MB
-Total reportado: 1064 MB = 103.66%
-RAM real usada: ~440 MB (confirmado con `top` en FreeBSD)
-Swap usado: 0 MB
-```
-
-**No es un problema real.** Verificar dentro de pfSense:
-
-```bash
-# En pfSense shell (opción 8)
-top -n 1 | head -5
-# Mem: Xm Active, Xm Inact, Xm Wired, Xm Buf, Xm Free
-# Swap: X Total, X Free ← si Free = Total, no hay presión
-```
-
-**Fix cosmético — deshabilitar balloon:**
-
-```bash
-# Proxmox shell — sin apagar pfSense
-qm set 100 --balloon 0
-```
-
-Proxmox dejará de calcular el porcentaje de forma incorrecta pero seguirá mostrando valores altos. Para métricas reales usar node_exporter (ver sección 12 del Monitoring Manual).
-
----
-
-### pve_exporter — Instalación en Proxmox Debian
-
-```bash
-# Proxmox (Debian) no tiene pip3 por defecto
-apt-get install -y python3-pip python3-venv
-
-# Instalar en virtualenv
-python3 -m venv /opt/pve_exporter
-/opt/pve_exporter/bin/pip install prometheus-pve-exporter
-
-# Config con API token (más seguro que user/password)
-mkdir -p /etc/pve_exporter
-cat > /etc/pve_exporter/pve.yml << 'EOF'
-default:
-  user: root@pam
-  token_name: pve-exporter
-  token_value: <TOKEN-UUID>
-  verify_ssl: false
-EOF
-chmod 600 /etc/pve_exporter/pve.yml
-
-# Servicio systemd — sintaxis pve_exporter v3.x
-cat > /etc/systemd/system/pve_exporter.service << 'EOF'
-[Unit]
-Description=Proxmox VE Prometheus Exporter
-After=network-online.target
-
-[Service]
-Type=simple
-User=root
-ExecStart=/opt/pve_exporter/bin/pve_exporter \
-  --config.file /etc/pve_exporter/pve.yml \
-  --web.listen-address 0.0.0.0:9221
-Restart=always
-RestartSec=5
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-systemctl daemon-reload
-systemctl enable --now pve_exporter
-curl -s http://localhost:9221/metrics | grep "pve_" | head -3
-```
-
-**Errores comunes:**
-
-| Error | Causa | Fix |
-|---|---|---|
-| `pip3: command not found` | Debian minimal | `apt-get install -y python3-pip python3-venv` |
-| `No such file /usr/local/bin/pve_exporter` | Binario en venv | Usar `/opt/pve_exporter/bin/pve_exporter` |
-| `unrecognized arguments: /etc/pve_exporter.yml 9221 0.0.0.0` | Sintaxis v2 (posicional) | Usar `--config.file` y `--web.listen-address` |
-| `status=203/EXEC` | Ruta incorrecta | Verificar ruta con `ls /opt/pve_exporter/bin/` |
-
----
-
-### adguard-exporter — Target incorrecto
-
-**Síntoma:** `AdGuardDown` FIRING aunque AdGuard funciona.
-
-**Causa:** El exporter corre en el **T430 (10.10.10.10)**, no en el LXC de AdGuard (10.10.10.3). El target en prometheus.yml debe apuntar al T430.
-
-```bash
-# ❌ Incorrecto
-- targets: ["10.10.10.3:9617"]    # AdGuard LXC — no tiene el exporter
-
-# ✅ Correcto
-- targets: ["10.10.10.10:9617"]   # T430 — aquí corre el contenedor
-```
-
-Fix:
-
-```bash
-# En T430
-sed -i 's/10.10.10.3:9617/10.10.10.10:9617/' \
-  /opt/monitoring/prometheus/config/prometheus.yml
-curl -X POST http://localhost:9091/-/reload
-```
-
-| Error | Component | Fix |
-|---|---|---|
-| `Failed to create network device` | Proxmox LXC | Add `bridge-vlan-aware yes` to vmbr1 |
-| `certificate is not yet valid` | AdGuard curl install | Sync NTP on Proxmox host |
-| `settimeofday: Operation not permitted` | LXC container | Fix time on Proxmox host, not in LXC |
-| `Get-NetAdapter` empty in Windows VM | Proxmox VM | Use `e1000` NIC instead of `virtio` |
-| `firewall-cmd --query-port` false positive | Fedora 42 | Use `--list-ports` instead |
-| `k3s-selinux` 404 from Rancher repo | Fedora 42 | Download from GitHub releases |
-| Node `NotReady` after K3s install | K3s + Cilium | Install Cilium CNI immediately |
-| etcd timeouts | K3s master | Ensure master (Dell 7490 #1) uses SSD |
-| Longhorn volume Degraded | Longhorn | Check T440p storage node is Ready |
-| DNS `.mgmt` NXDOMAIN from P53 | NetworkManager | Set `ipv4.ignore-auto-dns yes` |
-| VLAN client gets 10.10.10.x IP | Switch PVID | Correct PVID on switch port |
-| Pod stuck in Pending (T440p) | K3s taints | Add toleration for `storage=preferred` |
-| Pod stuck in Pending (P52) | K3s taints | Add toleration for `gpu=true` |
-
----
-
-*Document v1.0 — Enterprise HomeLab Troubleshooting · May 2026*
-
----
-
-## 14. Proxmox — Clonación de disco con dd (thin pool corruption)
-
-### Síntoma
-
-Después de clonar el disco de Proxmox con `dd` y hacer swap físico, las VMs no arrancan:
-
-```
-Thin pool pve-data-tpool transaction_id is 0, while expected 23
-activating LV 'pve/vm-101-disk-0' failed: device-mapper: reload ioctl failed
-```
-
-### Causa
-
-El `dd` se ejecutó con las VMs y LXCs **corriendo activamente**. El thin pool de LVM estaba escribiendo metadatos durante la clonación. El clon captura el thin pool en `transaction_id=0` (estado vacío) en lugar del estado real (transaction_id=23 con todos los mapeos de bloques).
-
-### ⚠️ REGLA CRÍTICA para clonar Proxmox con thin pools
-
-```bash
-# SIEMPRE apagar todo antes del dd
-pct stop 101      # AdGuard LXC
-sleep 5
-qm stop 100       # pfSense VM
-sleep 5
-qm stop 199       # Windows VM (opcional)
-sleep 15
-
-# Verificar que todo está detenido
-pct list   # todos stopped
-qm list    # todos stopped
-
-# LUEGO ejecutar el dd
-dd if=/dev/nvme0n1 \
-   of=/dev/sda \
-   bs=4M \
-   status=progress \
-   conv=fsync
-```
-
-### Intentos de recuperación (documentados)
-
-| Método | Resultado |
-|---|---|
-| `lvconvert --repair pve/data` | Falla — thin_repair no encuentra input |
-| `thin_repair -i /dev/pve/data_tmeta -o /tmp/repaired.bin` | Falla — bad checksum |
-| `thin_dump /dev/pve/data_tmeta` | Muestra `<superblock transaction="0">` vacío |
-| Copiar tmeta raw del disco original | Falla — checksum block device diferente |
-| `dmsetup create` para mapear tmeta original | bad checksum |
-| Copiar sectores tmeta con dd (sector exacto) | Copia exitosa pero LVM ve duplicados |
-| `vgcfgrestore --force` (cambiar transaction_id) | Thin pool activa pero thin volumes fallan |
-| **Revertir al disco original** | ✅ Solución correcta |
-
-### Proceso correcto de clonación Proxmox → 1TB
-
-```bash
-# 1. Apagar todas las VMs/LXCs
-pct stop 101 && qm stop 100 && qm stop 199
-sleep 30
-
-# 2. Verificar que el disco destino no tiene LVM activo
-mount | grep sda      # nada montado
-pvs | grep sda        # si aparece: vgchange -an pve --select 'pv_name=~sda'
-
-# 3. Clonar
-dd if=/dev/nvme0n1 of=/dev/sda bs=4M status=progress conv=fsync
-
-# 4. Post-clonación
-sgdisk -e /dev/sda                    # mover GPT backup al final del disco
-sgdisk -v /dev/sda                    # verificar: "No problems found"
-
-# 5. Swap físico (apagar M720q)
-shutdown -h now
-# → quitar disco original, insertar clon
-
-# 6. Post-arranque en nuevo disco
-pvs                  # verificar LVM
-lvs pve              # verificar thin pool: twi-a-tz-- (activo)
-vgchange -ay pve     # si necesario
-qm start 100         # pfSense
-pct start 101        # AdGuard
-qm start 199         # Windows
-
-# 7. Expandir LVM (aprovecha el espacio extra del disco más grande)
-lvextend -l +100%FREE /dev/pve/root
-resize2fs /dev/pve/root  # o xfs_growfs / si es xfs
-```
-
-### Post-expansión del 1TB
-
-```bash
-# Expandir thin pool para usar el espacio adicional
-lvextend -L +477G /dev/pve/data_tpool
-# O agregar como nuevo PV si el VG está lleno
-```
-
+*Document v2.1 — Troubleshooting Reference · Junio 2026*
+*Actualizado con K3s monitoring integration, node-exporter DaemonSet, rutas MGMT y Longhorn NodePort*
