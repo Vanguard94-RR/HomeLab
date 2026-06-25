@@ -33,6 +33,33 @@
 
 ---
 
+## ⚠️ Estado Junio 2026 — BLOQUEADO POR IMAGEN
+
+La infraestructura de Control-M está lista en el cluster K3s pero el deployment está bloqueado:
+
+| Item | Estado |
+|---|---|
+| Namespace `workload-automation` | ✅ Creado por ArgoCD |
+| PVC `controlm-data` 50GB Longhorn | ✅ Bound |
+| ServiceAccount + RBAC | ✅ Configurado |
+| ConfigMap `controlm-config` | ✅ Con endpoints Vault/Jenkins/ArgoCD |
+| Deployment Control-M Workbench | ❌ BLOQUEADO |
+
+**Causa del bloqueo:** BMC removió la imagen `controlm/workbench` de Docker Hub (404). La imagen ahora está en `distribution.bmc.com/ctmem/workbench:9.22.50-GA` y requiere:
+1. Cuenta activa en EPD de BMC (Electronic Product Distribution)
+2. Login: `docker login distribution.bmc.com -u<USER> -p<TOKEN>`
+
+**Cuando se resuelva el acceso EPD:**
+```bash
+# Actualizar imagen en cluster.env:
+CONTROLM_IMAGE="distribution.bmc.com/ctmem/workbench:9.22.50-GA"
+
+# Re-ejecutar módulo 11:
+sudo bash bootstrap.sh --role server --only 11
+```
+
+---
+
 ## 1. Overview y Arquitectura
 
 ### ¿Por qué Control-M en este lab?

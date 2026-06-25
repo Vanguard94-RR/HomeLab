@@ -121,6 +121,11 @@ declare -A HELM_REPOS=(
   ["cilium"]="https://helm.cilium.io/"
   ["longhorn"]="https://charts.longhorn.io"
   ["argo"]="https://argoproj.github.io/argo-helm"
+  ["hashicorp"]="https://helm.releases.hashicorp.com"
+  ["jenkins"]="https://charts.jenkins.io"
+  ["traefik"]="https://traefik.github.io/charts"
+  ["awx-operator"]="https://ansible.github.io/awx-operator/"
+  ["argo"]="https://argoproj.github.io/argo-helm"
 )
 
 for REPO_NAME in "${!HELM_REPOS[@]}"; do

@@ -11,7 +11,7 @@
 
 This HomeLab is designed as an enterprise-style platform engineering environment. Its purpose is not only to run personal services, but to demonstrate production-grade skills across network architecture, Linux operations, virtualization, Kubernetes, GitOps, IAM, secrets management, CI/CD, platform observability, and security segmentation.
 
-The current repository documents a strong foundation: Proxmox VE on a Lenovo M720q, pfSense CE as inter-VLAN router and firewall, AdGuard Home for internal DNS and filtering, a TP-Link TL-SG108E managed switch with 802.1Q VLANs, and Fedora-based K3s nodes prepared for cluster installation. The repository also contains historical GitOps assets under `docs/old` that model Jenkins, Vault, External Secrets Operator, ArgoCD, Helm charts, and workload delivery patterns.
+The HomeLab platform is fully operational as of Junio 2026: Proxmox VE on a Lenovo M720q, pfSense CE as inter-VLAN router and firewall, AdGuard Home for internal DNS and filtering, a TP-Link TL-SG108E managed switch with 802.1Q VLANs, K3s v1.35.5 cluster with 3 nodes (Running), and a full platform stack: Cilium v1.19.5, Longhorn v1.12.0, ArgoCD v9.6.0, HashiCorp Vault, Jenkins CI/CD, AWX (Ansible Tower), Traefik v3, PostgreSQL/Redis/MongoDB. IaC completo: 14 módulos, 4142 líneas, deploy automatizado via bootstrap.sh.
 
 The target architecture is a reproducible GitOps platform where Git is the source of truth, Jenkins performs CI only, ArgoCD owns reconciliation, Vault is the secrets authority, External Secrets Operator synchronizes runtime secrets, Keycloak provides identity federation, pfSense enforces segmentation, Cilium provides eBPF-based cluster networking, Istio provides application-level service mesh controls, and K3s hosts platform and showcase workloads.
 
@@ -50,8 +50,8 @@ This document intentionally separates:
 | Networking | TL-SG108E configured with VLANs 10, 20, 30, 40, 50, 90; 8 ports configured (VLAN 20 ports 2-6, VLAN 10 port 7, VLAN 90 port 8). | ✅ Deployed |
 | Firewall and routing | pfSense CE 2.7.2 VM — LAN migrada a vtnet1.10 (VLAN 10 tagged). WAN 192.168.1.131. 7 interfaces. DHCP VLAN 20/30/90. Firewall rules documentadas. | ✅ Deployed |
 | DNS | AdGuard Home LXC dual-homed. DNS rewrites para monitoring stack, K3s nodes, y lab services. Resolución desde P53 validada. | ✅ Deployed |
-| **Monitoring Stack** | **T430 (10.10.10.10, VLAN 10) con Prometheus+Grafana+Loki+Tempo+Alertmanager via Podman Compose. Exporters: node_exporter (pfSense ✅), pve_exporter (Proxmox ✅), adguard-exporter (T430 ✅). 6 dashboards importados incl. pfSense custom. Alertas: AdGuardDown ✅ ProxmoxDown ✅ NodeDown pendiente K3s.** | ✅ **DEPLOYED — Junio 2026** |
-| K3s readiness | Pre-install scripts v1.3/v1.2 verified on Fedora 42. New node inventory: Dell 7490 #1 (control-plane), Dell 7490 #2 + Dell 5480 (workers 1-2), P52 (worker3 ML/GPU), T440p (worker4 storage hybrid — 512GB SSD + 2TB HDD). T430 retired del cluster → ahora monitoring server. Total cluster: 160GB RAM, ~2.75TB Longhorn storage. | Prepared — pending install |
+| **Monitoring Stack** | **T430 (10.10.10.10, VLAN 10) con Prometheus+Grafana+Loki+Tempo+Alertmanager via Podman Compose. Exporters: node_exporter K3s DaemonSet ✅, pfSense ✅, pve_exporter ✅, adguard-exporter ✅. Todos los targets UP. Alertas: Firing 0.** | ✅ **DEPLOYED — Junio 2026** |
+| **K3s Cluster** | **v1.35.5+k3s1 — 3 nodos Ready. Dell 7490 #1 (10.10.20.101 CP), Dell 7490 #2 (10.10.20.102 W1), T440p (10.10.20.104 W4). Cilium v1.19.5 + Hubble ✅. Longhorn v1.12.0 ✅. ArgoCD v9.6.0 + ApplicationSet GitOps ✅. Vault dev mode ✅. Jenkins ✅. AWX ✅. Traefik v3 ✅. PostgreSQL/Redis/MongoDB ✅. IaC: 14 módulos.** | ✅ **DEPLOYED — Junio 2026** |
 | P53 lab access | Rutas estáticas permanentes a 10.10.10.0/24 y 10.10.20.0/24 via pfSense WAN. AdGuard DNS primary. /etc/hosts con lab hostnames. Acceso validado desde WiFi y dock ethernet. | ✅ Deployed |
 | CNI and service mesh design | K3s documentation define Cilium/Hubble plus Istio/Kiali como target platform. | Designed |
 | Hardware planning | `homelab_design.jsx` modela machines, roles, upgrades, VLANs, K3s, GitOps, IAM, storage, y monitoring stack. | ✅ Actualizado |
@@ -324,22 +324,26 @@ flowchart TB
     t430mon["T430 ✅ DEPLOYED<br/>10.10.10.10<br/>Prometheus+Grafana+Loki+Tempo+AM"]
   end
 
-  subgraph vlan20["VLAN 20 PROD — K3s Cluster (pending install)"]
-    cp["Dell 7490 #1<br/>K3s control-plane<br/>10.10.20.100"]
-    w1["Dell 7490 #2<br/>K3s worker1<br/>10.10.20.101"]
-    w2["Dell 5480<br/>K3s worker2<br/>10.10.20.102"]
-    w3["P52 ML/GPU<br/>K3s worker3<br/>10.10.20.103"]
-    w4["T440p storage<br/>K3s worker4<br/>10.10.20.104"]
+  subgraph vlan20["VLAN 20 PROD — K3s Cluster ✅ DEPLOYED Junio 2026"]
+    cp["Dell 7490 #1 ✅<br/>K3s CP temporal<br/>10.10.20.101"]
+    w1["Dell 7490 #2 ✅<br/>K3s worker1<br/>10.10.20.102"]
+    w2["Dell 5480 ⏳<br/>K3s CP permanente<br/>10.10.20.100 (llega después)"]
+    w3["P52 ⏳<br/>K3s worker3 ML/GPU<br/>10.10.20.103 (llega después)"]
+    w4["T440p ✅<br/>K3s worker4 storage<br/>10.10.20.104"]
   end
 
-  subgraph cluster["K3s Cluster Services"]
-    coredns["CoreDNS"]
-    cilium["Cilium CNI<br/>eBPF, NetworkPolicy, L2 LB"]
-    hubble["Hubble<br/>flow observability"]
+  subgraph cluster["K3s Cluster Services ✅ Junio 2026"]
+    coredns["CoreDNS ✅"]
+    cilium["Cilium v1.19.5 ✅<br/>eBPF CNI + NetworkPolicy"]
+    hubble["Hubble UI ✅<br/>flow observability"]
+    longhorn["Longhorn v1.12.0 ✅<br/>persistent storage"]
+    argocd["ArgoCD v9.6.0 ✅<br/>GitOps ApplicationSet"]
+    vault["Vault ✅<br/>dev mode + K8s auth"]
+    jenkins["Jenkins ✅<br/>CI/CD + JCasC"]
+    awx["AWX ✅<br/>Ansible Tower"]
+    traefik["Traefik v3 ✅<br/>Ingress + IngressRoutes"]
+    db["PostgreSQL+Redis+MongoDB ✅<br/>namespace databases"]
     svc["Service CIDR<br/>10.43.0.0/16"]
-    istio["Istio Service Mesh<br/>mTLS, traffic management"]
-    kiali["Kiali<br/>mesh topology dashboard"]
-    ingressCtl["Ingress Controllers<br/>Traefik internal, Nginx external"]
   end
 
   t430mon -->|"scrapes metrics"| cp
@@ -376,27 +380,28 @@ flowchart TB
   style cluster fill:#f8fafc,stroke:#7c3aed
 ```
 
-Current K3s evidence shows node readiness, not full cluster reconciliation. The target cluster design uses Cilium instead of the default K3s Flannel stack, so the install path should explicitly disable Flannel and the built-in network policy controller before installing Cilium. The next architecture milestone should document:
+**Estado Junio 2026 — K3s DEPLOYED ✅.** Cluster operativo con 3 nodos. Stack completo desplegado via IaC (14 módulos, 4142 líneas). GitOps activo con ArgoCD ApplicationSet.
 
-- K3s server installation on `t440p-server`.
-- Worker join for `t430`.
-- P52 join as worker2.
-- Cilium and Hubble installation and health.
-- Istio and Kiali rollout for namespaces that need mesh controls.
-- `kubectl get nodes -o wide` evidence.
-- Firewall trusted sources for pod/service CIDRs.
-- DNS rewrite such as `k3s.mgmt -> 10.10.20.100`.
+Próximos milestones:
+- DNS rewrites en AdGuard para hostnames `.lab.internal`
+- SSH keys en nodos K3s (eliminar password prompts)
+- Merge branch `refactor/full-gitops-bootstrap` → `main`
+- Control-M Workbench cuando se obtenga imagen EPD de BMC
+- Dell 5480 como CP permanente (cuando llegue)
+- P52 como worker3 ML/GPU (cuando llegue)
+- Prometheus targets para AWX, Vault, Jenkins (métricas disponibles)
+- Longhorn backup target (S3 o NFS)
 
 ### 6.2 Workload Placement — Estado actual (Junio 2026)
 
 | Node | Role | Status | Workload Policy |
 |---|---|---|---|
 | T430 | Monitoring server dedicado | ✅ DEPLOYED | Prometheus+Grafana+Loki+Tempo+Alertmanager. VLAN 10 MGMT. Fuera del cluster K3s. |
-| Dell 7490 #1 | K3s control-plane | Pending install | etcd + API server. 32GB DDR4. Lightweight; no workloads. |
-| Dell 7490 #2 | K3s worker1 | Pending install | General workloads. ArgoCD, Gitea, Harbor. |
-| Dell 5480 | K3s worker2 | Pending install | General workloads. Tekton, Vault, Keycloak. |
-| P52 | K3s worker3 ML/GPU | Pending install | GPU workloads (taint: gpu=true). Ollama. 1TB NVMe secundario para modelos. |
-| T440p | K3s worker4 storage | Pending install | Longhorn HDD tier (2TB). Taint: storage=preferred. |
+| Dell 7490 #1 | K3s control-plane (temporal) | ✅ Running — 10.10.20.101 | etcd + API server. 32GB DDR4. Vault, ArgoCD, Traefik, databases. |
+| Dell 7490 #2 | K3s worker1 | ✅ Running — 10.10.20.102 | Jenkins, AWX, Control-M Workbench (cuando imagen EPD disponible). |
+| Dell 5480 | K3s CP permanente (futuro) | ⏳ Llega después — 10.10.20.100 | Reemplazará Dell 7490 #1 como CP. |
+| P52 | K3s worker3 ML/GPU | ⏳ Llega después — 10.10.20.103 | GPU workloads. Ollama. 480GB NVMe secundario (del M720q upgrade). |
+| T440p | K3s worker4 storage | ✅ Running — 10.10.20.104 | Longhorn data node. 476GB LVM. |
 | M720q | Hypervisor/edge | ✅ DEPLOYED | pfSense + AdGuard. No K3s workloads. |
 
 ### 6.3 CNI and Service Mesh

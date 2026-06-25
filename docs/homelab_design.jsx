@@ -64,31 +64,31 @@ function Ln({x1,y1,x2,y2,col,dash,arr}) {
 const MACHINES = [
   { id:"m720q",  name:"Lenovo M720q",          role:"Proxmox Hypervisor",              badge:"HYPERVISOR", pal:"teal",
     cpu:"Intel Core i5-8500T (6C/6T, 2.1–3.5GHz, 8th Gen)", ram:"32GB DDR4 SO-DIMM (2×16GB) — MAXED",
-    storage:"480GB NVMe M.2 (activo) + 1TB NVMe USB (clon listo, swap físico pendiente)", net:"NIC PCIe 4-puertos Intel I350-T4", gpu:"Intel UHD 630", os:"Proxmox VE 9.1.1 (kernel 6.17.2-1-pve)",
+    storage:"512GB NVMe M.2 (OS + VMs/LXCs)", net:"NIC PCIe 4-puertos Intel I350-T4", gpu:"Intel UHD 630", os:"Proxmox VE 9.1.1",
     roleDetail:"Proxmox hypervisor · pfSense CE VM (VM 100) · AdGuard Home LXC (101) · vmbr1 VLAN-aware trunk",
     limits:["Solo 1 slot NVMe M.2 2280 — sin expansión interna","NIC PCIe I350-T4 ocupa slot PCIe","Sin GPU dedicada para ML"],
-    upgrades:[], workloads:["pfSense CE 2.7.2 (VM 100) ✅ running","AdGuard Home LXC (LXC 101) ✅ running","Windows Desktop VM (VM 199) — stopped","vmbr0 WAN · vmbr1 LAN trunk · 1TB NVMe clon listo"] },
+    upgrades:[], workloads:["pfSense CE 2.7.2 (VM 100)","AdGuard Home LXC (LXC 101)","Windows Desktop VM (VM 199)","vmbr0 WAN · vmbr1 LAN trunk"] },
   { id:"dell7490-1", name:"Dell Latitude 7490 #1", role:"K3s control-plane",           badge:"K3s MASTER",  pal:"blue",
     cpu:"Intel Core i5-8xxx (4C/8T, 8th Gen, 15W)", ram:"32GB DDR4",
     storage:"256GB SSD (OS + etcd)", net:"Intel Gigabit", gpu:"Intel UHD 620", os:"Fedora 42 Server",
-    roleDetail:"K3s server (control-plane) · etcd · kube-apiserver · Cilium v1.19.5 · Helm v3.21.2 · Longhorn v1.12.0 · ArgoCD v9.6.0 · k9s v0.51.0 · 10.10.20.101 ✅ RUNNING",
+    roleDetail:"K3s server (control-plane) · etcd · kube-apiserver · Cilium · Helm · 10.10.20.100",
     limits:["256GB SSD — espacio limitado para workloads grandes","i5 U-series — 15W TDP, menor rendimiento que H-series"],
-    upgrades:[], workloads:["K3s v1.35.5 API server","etcd embebido","CoreDNS","Cilium v1.19.5 + Hubble UI","Longhorn v1.12.0","ArgoCD v9.6.0","Helm v3.21.2","k9s v0.51.0"] },
+    upgrades:[], workloads:["K3s API server","etcd","CoreDNS","kube-scheduler","kube-controller"] },
   { id:"dell7490-2", name:"Dell Latitude 7490 #2", role:"K3s worker1",                 badge:"WORKER 1",    pal:"blue",
     cpu:"Intel Core i5-8xxx (4C/8T, 8th Gen, 15W)", ram:"32GB DDR4",
     storage:"256GB SSD", net:"Intel Gigabit", gpu:"Intel UHD 620", os:"Fedora 42 Server",
-    roleDetail:"K3s agent worker1 · workloads generales · 10.10.20.102 ✅ RUNNING",
+    roleDetail:"K3s agent worker1 · workloads generales · 10.10.20.101",
     limits:["256GB SSD — espacio Longhorn limitado"],
-    upgrades:[], workloads:["K3s v1.35.5 agent ✅","Longhorn data replica","Cilium agent","Workloads generales (pendiente ArgoCD config)"] },
+    upgrades:[], workloads:["ArgoCD","Gitea","Harbor","cert-manager","Traefik v3"] },
   { id:"dell5480",   name:"Dell Latitude 5480",    role:"K3s worker2",                 badge:"WORKER 2",    pal:"blue",
     cpu:"Intel Core i5-8xxx (4C/8T, 8th Gen, 15W)", ram:"32GB DDR4",
     storage:"256GB SSD", net:"Intel Gigabit", gpu:"Intel UHD 620", os:"Fedora 42 Server",
-    roleDetail:"K3s agent worker2 · workloads generales · 10.10.20.100 ⏳ Llega después (CP permanente futuro)",
+    roleDetail:"K3s agent worker2 · workloads generales · 10.10.20.102",
     limits:["256GB SSD — espacio Longhorn limitado"],
     upgrades:[], workloads:["Tekton","Vault","Keycloak","Nginx Ingress","Alertmanager"] },
   { id:"p52",    name:"ThinkPad P52",           role:"K3s worker3 ML/GPU",             badge:"WORKER ML",   pal:"amber",
     cpu:"Intel Core i7 6C/12T (8th Gen Coffee Lake-H)", ram:"32GB DDR4 (2 slots libres → max 64GB)",
-    storage:"NVMe primary (OS) + 480GB NVMe M.2 2280 secundario (del upgrade M720q) → /var/lib/longhorn 350GB + /var/lib/ollama 130GB", net:"Intel Gigabit + Thunderbolt 3", gpu:"Quadro P1000 4GB GDDR5", os:"Fedora 42 Server",
+    storage:"NVMe primary (OS) + 1TB NVMe M.2 2280 (slot secundario) → Longhorn NVMe tier + modelos ML", net:"Intel Gigabit + Thunderbolt 3", gpu:"Quadro P1000 4GB GDDR5", os:"Fedora 42 Server",
     roleDetail:"K3s worker3 · GPU workloads · Ollama ML inference · Longhorn NVMe tier · 10.10.20.103",
     limits:["Quadro P1000 limitado para LLMs grandes (4GB VRAM)","Ruido ventilación bajo carga sostenida"],
     upgrades:[{text:"Expandir RAM a 64GB (2×32GB en slots libres)",priority:"MED",cost:"~$80"}],
@@ -98,7 +98,7 @@ const MACHINES = [
     storage:"512GB SSD NGFF (OS + pods) + 1TB HDD (SATA) + 1TB HDD (Ultrabay) → 2TB Longhorn HDD tier", net:"Intel Gigabit", gpu:"GTX 730M (sin uso)", os:"Fedora 42 Server",
     roleDetail:"K3s worker4 storage · 2TB HDD = mayor pool Longhorn del cluster · 10.10.20.104",
     limits:["16GB DDR3L — menor RAM del cluster","4th Gen Intel — mayor consumo y más antiguo","Slot secundario M.2 es 2242 — NVMe 2280 no cabe"],
-    upgrades:[], workloads:["K3s v1.35.5 agent ✅","Longhorn v1.12.0 data node","Cilium agent","iscsid activo","476GB root LVM"] },
+    upgrades:[], workloads:["Longhorn HDD tier (2TB)","Workloads generales (SSD OS)","Taint: storage=preferred:PreferNoSchedule"] },
   { id:"t430",   name:"ThinkPad T430",          role:"Monitoring server dedicado",      badge:"MONITORING",  pal:"green",
     cpu:"Intel Core i7-3630QM (4C/8T, 2.4GHz, 3rd Gen)", ram:"16GB DDR3 SO-DIMM — MAXED",
     storage:"512GB SSD (WWAN) → OS + Prometheus + Tempo + Grafana | 500GB HDD (SATA) → Loki logs | 500GB HDD (Caddy) → backups", net:"Intel Gigabit", gpu:"Intel HD 4000", os:"Fedora 42 Server",
@@ -134,10 +134,10 @@ const UPGRADES = [
     items:["bridge-vlan-aware yes en vmbr1","bridge-vids 2-4094 — acepta cualquier VLAN sin cambios","VM 199 tag=10 ✓ · LXC 101 eth0 tag=10 ✓ · pfSense trunk sin tag ✓"] },
   { n:4, title:"Pre-check K3s ✓ scripts verificados en T440p + T430", mach:["T440p","T430"], pal:"teal",
     reason:"COMPLETADO — Scripts precheck v1.3 y prefix v1.2 verificados. 26 passed / 0 warnings / 0 failed en ambos nodos. Base validada para nueva arquitectura.", cost:"✓ hecho",
-    items:["✅ homelab-k3s-precheck.sh v1.3 — PASS en 3 nodos","✅ homelab-k3s-prefix.sh v1.3 — FIX 2.5 (LVM) + FIX 4 (Cilium ports)","✅ bootstrap.sh — deploy.sh completo desde P53 (1953 líneas IaC)","✅ K3s v1.35.5+k3s1 instalado — 3/3 nodos Ready"] },
+    items:["homelab-k3s-precheck.sh v1.3 — 26 checks · exit codes 0/1/2","homelab-k3s-prefix.sh v1.2 — 7 fixes idempotentes · SELinux · firewalld · sysctl","Verificado: Fedora 42 · SELinux Enforcing + k3s-selinux · Cilium-ready"] },
   { n:5, title:"Nueva arquitectura 6 nodos — incorporar Dell + redefinir T440p", mach:["Dell 7490","Dell 5480","T440p"], pal:"blue",
     reason:"T430 retirado. Dell 7490 #1 → control-plane (32GB DDR4 + SSD). Dell 7490 #2 + Dell 5480 → workers 1 y 2. T440p → worker4 storage híbrido (512GB SSD + 2TB HDD). P52 → worker3 ML/GPU.", cost:"hardware disponible",
-    items:["✅ Dell 7490 #1: control-plane temporal · 10.10.20.101 · K3s v1.35.5 RUNNING","✅ Dell 7490 #2: worker1 · 10.10.20.102 · K3s v1.35.5 RUNNING","✅ T440p: worker4 storage · 10.10.20.104 · K3s v1.35.5 RUNNING","⏳ Dell 5480: CP permanente · 10.10.20.100 · Llega después","⏳ P52: worker3 ML/GPU · 10.10.20.103 · Llega después"] },
+    items:["Dell 7490 #1: control-plane · 32GB DDR4 · 256GB SSD · 10.10.20.100","Dell 7490 #2: worker1 · 32GB DDR4 · 256GB SSD · 10.10.20.101","Dell 5480: worker2 · 32GB DDR4 · 256GB SSD · 10.10.20.102","T440p: worker4 storage · 16GB · 512GB SSD + 2TB HDD · 10.10.20.104","T430: retirar (3rd gen · 16GB · sin SSD)"] },
   { n:6, title:"Incorporar P52 como worker3 ML/GPU", mach:["P52"], pal:"amber",
     reason:"Quadro P1000 es único en el lab. Insustituible para Ollama, ML workloads. 32GB DDR4 suficiente. NVMe 1TB 2280 instalado en slot secundario — no cabe en T440p (slot 2242).", cost:"$0 (hardware existente + NVMe disponible)",
     items:["Instalar Fedora Server minimal en P52","homelab-k3s-precheck.sh --role worker","homelab-k3s-prefix.sh --role worker --hostname p52","NVMe 1TB M.2 2280 en slot secundario → Longhorn SSD tier + ML models","Taint: gpu=true:NoSchedule en worker3 · 10.10.20.103"] },
@@ -173,7 +173,7 @@ export default function App() {
           <span style={{marginLeft:6,padding:"2px 8px",borderRadius:4,background:P.teal[0],color:P.teal[2],fontSize:11,fontWeight:500}}>pfSense ✓</span>
           <span style={{marginLeft:6,padding:"2px 8px",borderRadius:4,background:P.green[0],color:P.green[2],fontSize:11,fontWeight:500}}>AdGuard ✓</span>
           <span style={{marginLeft:6,padding:"2px 8px",borderRadius:4,background:P.teal[0],color:P.teal[2],fontSize:11,fontWeight:500}}>VLANs Persistent ✓</span>
-          <span style={{marginLeft:6,padding:"2px 8px",borderRadius:4,background:P.blue[0],color:P.blue[2],fontSize:11,fontWeight:500}}>K3s ✅ DEPLOYED</span>
+          <span style={{marginLeft:6,padding:"2px 8px",borderRadius:4,background:P.blue[0],color:P.blue[2],fontSize:11,fontWeight:500}}>K3s Pre-check ✓</span>
           <span style={{marginLeft:6,padding:"2px 8px",borderRadius:4,background:P.green[0],color:P.green[2],fontSize:11,fontWeight:500}}>Monitoring ✓ T430</span>
         </p>
         <div style={{display:"flex",gap:2,overflowX:"auto"}}>
@@ -212,14 +212,14 @@ function Monitoring({P}) {
     {name:"Proxmox VE",ip:"192.168.1.65",port:9221,exporter:"pve_exporter (virtualenv)",status:"up"},
     {name:"pfSense",ip:"10.10.10.1",port:9100,exporter:"node_exporter (FreeBSD)",status:"up"},
     {name:"AdGuard Home",ip:"10.10.10.10",port:9617,exporter:"adguard-exporter (T430)",status:"up"},
-    {name:"dell-7490-1",ip:"10.10.20.101",port:9100,exporter:"node_exporter (pendiente config Prometheus)",status:"pending"},
-    {name:"dell-7490-2",ip:"10.10.20.102",port:9100,exporter:"node_exporter (pendiente config Prometheus)",status:"pending"},
-    {name:"dell-5480",ip:"10.10.20.100",port:9100,exporter:"node_exporter DaemonSet",status:"pending"},
+    {name:"dell-7490-1",ip:"10.10.20.100",port:9100,exporter:"node_exporter DaemonSet",status:"pending"},
+    {name:"dell-7490-2",ip:"10.10.20.101",port:9100,exporter:"node_exporter DaemonSet",status:"pending"},
+    {name:"dell-5480",ip:"10.10.20.102",port:9100,exporter:"node_exporter DaemonSet",status:"pending"},
     {name:"p52",ip:"10.10.20.103",port:9100,exporter:"node_exporter DaemonSet",status:"pending"},
     {name:"t440p-storage",ip:"10.10.20.104",port:9100,exporter:"node_exporter DaemonSet",status:"pending"},
-    {name:"Longhorn",ip:"10.10.20.101",port:9500,exporter:"built-in (instalado, pendiente Prometheus target)",status:"pending"},
-    {name:"Cilium/Hubble",ip:"kube-system",port:9962,exporter:"built-in (instalado, pendiente Prometheus target)",status:"pending"},
-    {name:"Istio",ip:"10.10.20.101",port:15014,exporter:"built-in (no instalado aún)",status:"pending"},
+    {name:"Longhorn",ip:"10.10.20.100",port:9500,exporter:"built-in",status:"pending"},
+    {name:"Cilium/Hubble",ip:"kube-system",port:9962,exporter:"built-in",status:"pending"},
+    {name:"Istio",ip:"10.10.20.100",port:15014,exporter:"built-in",status:"pending"},
     {name:"T430 (self)",ip:"10.10.10.10",port:9100,exporter:"node_exporter",status:"up"},
   ];
   return (
@@ -398,7 +398,7 @@ function Upgrades({P}) {
         })}
       </div>
       <div style={{marginTop:20,padding:16,background:P.bg2,borderRadius:8,fontSize:13,color:P.txts}}>
-        <strong style={{color:P.txt}}>Estado actual:</strong> Switch managed ✓ · pfSense ✓ · AdGuard ✓ · VLANs Persistent ✓ · K3s INSTALADO ✅ (Junio 2026) — 3 nodos Ready · Cilium v1.19.5 · Longhorn v1.12.0 · ArgoCD v9.6.0.
+        <strong style={{color:P.txt}}>Estado actual:</strong> Switch managed ✓ · pfSense ✓ · AdGuard ✓ · VLANs Persistent ✓ · K3s Pre-check ✓. Próximo paso: instalar Fedora en Dell 7490 #1/2 y Dell 5480, luego K3s con Cilium.
       </div>
     </div>
   );
@@ -507,10 +507,10 @@ function SwitchVlan({P}) {
 
   const ports=[
     {port:1, device:"M720q (enp1s0f0)",      role:"TRUNK",     vlan:"10,20,30,40,50,90", mode:"Tagged",   pvid:1,  pal:"teal"},
-    {port:2, device:"Dell 7490 #1 (CP 10.10.20.101) ✅",  role:"K3s PROD",  vlan:"20", mode:"Untagged", pvid:20, pal:"blue"},
-    {port:3, device:"Dell 5480 (CP perm. futuro 10.10.20.100) ⏳",    role:"K3s PROD",  vlan:"20", mode:"Untagged", pvid:20, pal:"blue"},
-    {port:4, device:"Dell 7490 #2 (worker1 10.10.20.102) ✅", role:"K3s PROD",  vlan:"20", mode:"Untagged", pvid:20, pal:"blue"},
-    {port:5, device:"T440p (worker4 10.10.20.104) ✅",   role:"K3s PROD",  vlan:"20", mode:"Untagged", pvid:20, pal:"purple"},
+    {port:2, device:"Dell 7490 #1 (master)",  role:"K3s PROD",  vlan:"20",               mode:"Untagged", pvid:20, pal:"blue"},
+    {port:3, device:"Dell 5480 (worker2)",    role:"K3s PROD",  vlan:"20",               mode:"Untagged", pvid:20, pal:"blue"},
+    {port:4, device:"Dell 7490 #2 (worker1)", role:"K3s PROD",  vlan:"20",               mode:"Untagged", pvid:20, pal:"blue"},
+    {port:5, device:"T440p (worker4 stor)",   role:"K3s PROD",  vlan:"20",               mode:"Untagged", pvid:20, pal:"purple"},
     {port:6, device:"P52 (worker3 ML/GPU)",   role:"K3s PROD",  vlan:"20",               mode:"Untagged", pvid:20, pal:"amber"},
     {port:7, device:"T430 (monitoring)",      role:"MGMT",      vlan:"10",               mode:"Untagged", pvid:10, pal:"green"},
     {port:8, device:"Parrot OS",              role:"PENTEST",   vlan:"90",               mode:"Untagged", pvid:90, pal:"red"},
@@ -1388,15 +1388,15 @@ function K3s({P}) {
       {/* Node status cards */}
       <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10,marginBottom:16}}>
         {[
-          {label:"Dell 7490 #1",role:"control-plane temporal",ip:"10.10.20.101",status:"✅ Ready",pal:"blue",
+          {label:"Dell 7490 #1",role:"control-plane",ip:"10.10.20.100",status:"⏳ Pending",pal:"blue",
            specs:"i5-8xxx · 32GB DDR4 · 256GB SSD",detail:"Pre-check not yet run"},
-          {label:"Dell 7490 #2",role:"worker1",ip:"10.10.20.102",status:"✅ Ready",pal:"blue",
+          {label:"Dell 7490 #2",role:"worker1",ip:"10.10.20.101",status:"⏳ Pending",pal:"purple",
            specs:"i5-8xxx · 32GB DDR4 · 256GB SSD",detail:"Pre-check not yet run"},
-          {label:"Dell 5480",role:"CP permanente (futuro)",ip:"10.10.20.100",status:"⏳ Llega después",pal:"purple",
+          {label:"Dell 5480",role:"worker2",ip:"10.10.20.102",status:"⏳ Pending",pal:"purple",
            specs:"i5-8xxx · 32GB DDR4 · 256GB SSD",detail:"Pre-check not yet run"},
-          {label:"ThinkPad P52",role:"worker3 ML/GPU",ip:"10.10.20.103",status:"⏳ Llega después",pal:"amber",
+          {label:"ThinkPad P52",role:"worker3 ML/GPU",ip:"10.10.20.103",status:"⏳ Pending",pal:"teal",
            specs:"i7 6C/12T · 32GB DDR4 · Quadro P1000 · +1TB NVMe 2280",detail:"NVMe 1TB secundario instalado"},
-          {label:"ThinkPad T440p",role:"worker4 storage",ip:"10.10.20.104",status:"✅ Ready",pal:"purple",
+          {label:"ThinkPad T440p",role:"worker4 storage",ip:"10.10.20.104",status:"⏳ Pending",pal:"amber",
            specs:"i7-4712MQ · 16GB · 512GB SSD + 2TB HDD",detail:"Pre-check not yet run"},
           {label:"ThinkPad T430",role:"RETIRE",ip:"—",status:"🗑 Retire",pal:"gray",
            specs:"i7-3630QM · 16GB DDR3 · HDD",detail:"3rd gen · replaced by Dell 7490"},

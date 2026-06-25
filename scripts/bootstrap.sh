@@ -138,6 +138,13 @@ declare -a MODULES=(
   "05:05-longhorn.sh:Longhorn Storage:server"
   "06:06-argocd.sh:ArgoCD GitOps:server"
   "07:07-monitoring-agents.sh:Monitoring Agents (node-exporter DaemonSet):server"
+  "08:08-argocd-gitops.sh:ArgoCD GitOps Bootstrap (repo + ApplicationSet):server"
+  "09:09-vault.sh:HashiCorp Vault (dev mode + K8s auth + políticas):server"
+  "10:10-jenkins.sh:Jenkins CI/CD (JCasC + Vault + Longhorn):server"
+  "11:11-argo-workflows.sh:Argo Workflows (equivalente Control-M, K8s-nativo):server"
+  "12:12-awx.sh:AWX Ansible Tower (Operator + instancia):server"
+  "13:13-ingress.sh:Traefik v3 (ingress controller + IngressRoutes + DNS):server"
+  "14:14-databases.sh:Databases (PostgreSQL + Redis + MongoDB):server"
 )
 
 # -----------------------------------------------------------------------------

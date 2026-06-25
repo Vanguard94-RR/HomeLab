@@ -602,3 +602,59 @@ kubectl logs -n argocd -l app.kubernetes.io/name=argocd-server --tail=20
 
 *Document v2.1 — Troubleshooting Reference · Junio 2026*
 *Actualizado con K3s monitoring integration, node-exporter DaemonSet, rutas MGMT y Longhorn NodePort*
+
+---
+
+## 15. AWX — Permission denied en postgres
+
+**Síntoma:** `homelab-awx-postgres-15-0` en CrashLoopBackOff:
+```
+mkdir: cannot create directory '/var/lib/pgsql/data/userdata': Permission denied
+```
+
+**Causa:** Longhorn no aplica fsGroup correcto sin `postgres_storage_class` explícito en el CR.
+
+**Fix:** Borrar instancia y recrear con storage class explícito:
+```bash
+kubectl delete awx homelab-awx -n awx
+kubectl delete statefulset homelab-awx-postgres-15 -n awx
+kubectl delete pvc postgres-15-homelab-awx-postgres-15-0 -n awx
+# Recrear con postgres_storage_class: longhorn y postgres_storage_requirements explícitos
+# Ver módulo 12 actualizado
+```
+
+---
+
+## 16. Control-M Workbench — imagen removida de Docker Hub
+
+**Síntoma:** `ErrImagePull` — `pull access denied` para `controlm/workbench:latest`
+
+**Causa:** BMC removió la imagen de Docker Hub (404 en hub.docker.com/r/controlm/workbench).
+Nueva ubicación: `distribution.bmc.com/ctmem/workbench:9.22.50-GA`
+Requiere cuenta EPD de BMC (soporte de pago).
+
+**Estado actual:** Infraestructura lista (namespace, PVC 50GB, RBAC). Deployment pendiente de acceso EPD.
+
+---
+
+## 17. Jenkins — CrashLoopBackOff Exit Code 5
+
+**Síntoma:** `Failed ConfigurationAsCode.init` en jenkins-0
+
+**Causa:** JCasC YAML inline en `helm install --set controller.JCasC.configScripts.*` tiene formato inválido.
+
+**Fix:** Quitar JCasC inline del helm install. Usar ConfigMap separado post-install.
+Ver módulo 10 corregido — aplica ConfigMap `jenkins-jcasc-vault` separado del Helm.
+
+
+### Fix definitivo AWX + Longhorn
+
+El problema raíz es que Longhorn no aplica `fsGroup: 26` (GID del usuario `postgres`) al montar volúmenes para StatefulSets que no lo declaran explícitamente, y el AWX Operator no lo incluye.
+
+**Solución:** usar `postgres_storage_class: local-path` para el postgres de AWX. `local-path` usa hostPath y no tiene restricciones de fsGroup. Los projects de AWX sí pueden usar Longhorn.
+
+```yaml
+spec:
+  postgres_storage_class: local-path    # local-path para postgres (sin problema fsGroup)
+  projects_storage_class: longhorn      # Longhorn para projects (sin problema)
+```

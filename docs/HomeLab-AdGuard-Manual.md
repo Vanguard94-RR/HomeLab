@@ -527,13 +527,17 @@ Navigate to `Filters → DNS Rewrites → Add DNS rewrite`
 
 | Domain | Answer | Service |
 |---|---|---|
-| `argocd.lab.internal` | 10.10.20.101:NodePort | ArgoCD UI (port-forward activo) |
-| `hubble.lab.internal` | 10.10.20.101:NodePort | Cilium Hubble UI (port-forward activo) |
-| `longhorn.lab.internal` | 10.10.20.101:NodePort | Longhorn UI (port-forward activo) |
+| `argocd.lab.internal` | 10.10.20.101 | ArgoCD UI → Traefik :30180 ✅ ACTIVO |
+| `hubble.lab.internal` | 10.10.20.101 | Cilium Hubble UI → Traefik :30180 ✅ ACTIVO |
+| `longhorn.lab.internal` | 10.10.20.101 | Longhorn UI → Traefik :30180 ✅ ACTIVO |
+| `vault.lab.internal` | 10.10.20.101 | Vault UI → Traefik :30180 ✅ ACTIVO |
+| `jenkins.lab.internal` | 10.10.20.101 | Jenkins CI → Traefik :30180 ✅ ACTIVO |
+| `awx.lab.internal` | 10.10.20.101 | AWX Ansible Tower → :30080 ✅ ACTIVO |
+| `controlm.lab.internal` | 10.10.20.101 | Control-M Workbench → :30843 ⏳ (imagen pendiente EPD) |
+| `grafana.lab.internal` | 10.10.10.10 | Grafana → T430 :3000 ✅ ACTIVO |
 | `gitea.lab.internal` | MetalLB IP | Gitea SCM (pendiente) |
 | `harbor.lab.internal` | MetalLB IP | Harbor registry (pendiente) |
-| `kiali.lab.internal` | MetalLB IP | Istio Kiali (pendiente — Istio no instalado) |
-| `ollama.lab.internal` | MetalLB IP | Ollama ML P52 (pendiente llegada P52) |
+| `ollama.lab.internal` | 10.10.20.103 | Ollama ML P52 (pendiente llegada P52) |
 
 > K3s INSTALADO — Junio 2026. ArgoCD, Longhorn y Hubble UI están corriendo. Las entradas `*.lab.internal` se activarán cuando se configure el ingress controller y los servicios tengan IPs estables via LoadBalancer o NodePort.
 
@@ -1184,4 +1188,4 @@ pfSense WAN              pfSense LAN → TL-SG108E
 
 ---
 
-*Document v2.2 — Actualizado Junio 2026 · K3s cluster DEPLOYED · IPs VLAN 20 corregidas · adguard-exporter ✅ UP · DNS Rewrites K3s actualizados*
+*Document v2.3 — Actualizado Junio 2026 — Stack completo desplegado — DNS rewrites .lab.internal · K3s cluster DEPLOYED · IPs VLAN 20 corregidas · adguard-exporter ✅ UP · DNS Rewrites K3s actualizados*

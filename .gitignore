@@ -33,6 +33,7 @@ vault-init.txt
 unseal-keys.txt
 *.seal
 .GitHubToken
+.DockerHubToken
 
 # ==========================================
 # Terraform
