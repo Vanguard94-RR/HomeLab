@@ -1,0 +1,52 @@
+---
+# =============================================================================
+#  HomeLab -- ArgoCD ApplicationSet  v1.0
+#  Descubre y despliega automáticamente todas las apps en gitops/apps/
+#  Cada subdirectorio = una Application de ArgoCD
+# =============================================================================
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: homelab-apps
+  namespace: argocd
+spec:
+  # Genera una Application por cada directorio en gitops/apps/
+  generators:
+    - git:
+        repoURL: https://github.com/Vanguard94-RR/HomeLab.git
+        revision: refactor/full-gitops-bootstrap
+        directories:
+          - path: gitops/apps/*
+
+  # Template — una Application por directorio descubierto
+  template:
+    metadata:
+      name: "{{path.basename}}"
+      labels:
+        app.kubernetes.io/managed-by: argocd-applicationset
+        homelab/app: "{{path.basename}}"
+    spec:
+      project: default
+
+      source:
+        repoURL: https://github.com/Vanguard94-RR/HomeLab.git
+        targetRevision: refactor/full-gitops-bootstrap
+        path: "{{path}}"
+
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: "{{path.basename}}"
+
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=true
+          - ServerSideApply=true
+        retry:
+          limit: 3
+          backoff:
+            duration: 30s
+            factor: 2
+            maxDuration: 3m

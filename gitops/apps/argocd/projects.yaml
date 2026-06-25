@@ -1,0 +1,73 @@
+---
+# =============================================================================
+#  HomeLab -- ArgoCD Self-Managed Config
+#  ArgoCD gestiona su propia configuración via GitOps (app of apps pattern)
+#  Namespace destino: argocd
+# =============================================================================
+
+# Proyecto homelab — agrupa todas las apps del lab
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: homelab
+  namespace: argocd
+  labels:
+    app.kubernetes.io/managed-by: argocd
+spec:
+  description: HomeLab K3s platform applications
+
+  # Repos permitidos
+  sourceRepos:
+    - https://github.com/Vanguard94-RR/HomeLab.git
+    - https://helm.cilium.io/
+    - https://charts.longhorn.io
+    - https://argoproj.github.io/argo-helm
+    - https://charts.jenkins.io
+    - https://helm.releases.hashicorp.com
+
+  # Clusters destino
+  destinations:
+    - server: https://kubernetes.default.svc
+      namespace: "*"
+
+  # Recursos permitidos
+  clusterResourceWhitelist:
+    - group: "*"
+      kind: "*"
+
+  namespaceResourceWhitelist:
+    - group: "*"
+      kind: "*"
+
+  # Políticas
+  orphanedResources:
+    warn: true
+
+---
+# Proyecto workload-automation — para Control-M Lab
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: workload-automation
+  namespace: argocd
+  labels:
+    app.kubernetes.io/managed-by: argocd
+spec:
+  description: Workload Automation platform (Control-M Lab)
+
+  sourceRepos:
+    - https://github.com/Vanguard94-RR/HomeLab.git
+
+  destinations:
+    - server: https://kubernetes.default.svc
+      namespace: workload-automation
+
+  clusterResourceWhitelist:
+    - group: ""
+      kind: Namespace
+    - group: "rbac.authorization.k8s.io"
+      kind: "*"
+
+  namespaceResourceWhitelist:
+    - group: "*"
+      kind: "*"

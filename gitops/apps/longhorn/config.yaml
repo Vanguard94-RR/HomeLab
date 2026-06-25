@@ -1,0 +1,61 @@
+---
+# =============================================================================
+#  HomeLab -- Longhorn App
+#  Longhorn está instalado via Helm directamente (módulo 05 IaC)
+#  Este manifiesto gestiona recursos adicionales de configuración:
+#    - StorageClass customizada para NVMe tier (cuando llegue P52)
+#    - Recurse Settings de Longhorn via ConfigMap
+# =============================================================================
+
+# StorageClass default (Longhorn la crea automáticamente al instalarse)
+# Este recurso es un placeholder — ArgoCD lo sincroniza pero no lo modifica
+# ya que Longhorn gestiona su propia StorageClass
+
+---
+# StorageClass NVMe tier — para cuando llegue P52
+# Comentada hasta que P52 esté en el cluster
+# apiVersion: storage.k8s.io/v1
+# kind: StorageClass
+# metadata:
+#   name: longhorn-nvme
+#   annotations:
+#     storageclass.kubernetes.io/is-default-class: "false"
+# provisioner: driver.longhorn.io
+# allowVolumeExpansion: true
+# reclaimPolicy: Delete
+# volumeBindingMode: Immediate
+# parameters:
+#   numberOfReplicas: "1"
+#   staleReplicaTimeout: "2880"
+#   diskSelector: "nvme"
+#   nodeSelector: "p52"
+
+---
+# Namespace (por si no existe)
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: longhorn-system
+  labels:
+    app.kubernetes.io/managed-by: argocd
+    homelab/team: platform
+
+---
+# Recurse Settings — backup target (placeholder)
+# Configurar cuando se defina el destino de backups
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: longhorn-gitops-config
+  namespace: longhorn-system
+  labels:
+    app.kubernetes.io/managed-by: argocd
+data:
+  # Documentación de la configuración activa
+  replica-count: "2"
+  data-path: "/var/lib/longhorn"
+  metrics-nodeport: "30500"
+  # Pendiente: backup target (S3, NFS, etc.)
+  backup-target: "pending"
+  # NVMe tier: cuando llegue P52 con 480GB NVMe
+  nvme-tier: "pending-p52"
