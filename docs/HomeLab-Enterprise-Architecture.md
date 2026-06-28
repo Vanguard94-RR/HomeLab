@@ -7,6 +7,85 @@
 
 ---
 
+## ✅ Estado del Cluster — Junio 2026
+
+### Stack Desplegado
+
+| Módulo | Componente | Namespace | Versión | Estado |
+|---|---|---|---|---|
+| 01 | Preflight + rutas MGMT | all nodes | — | ✅ |
+| 02 | K3s | kube-system | v1.35.5+k3s1 | ✅ 3 nodos Ready |
+| 03 | Helm + CLI Tools | — | Helm 3.21.2 | ✅ |
+| 04 | Cilium CNI + Hubble | kube-system | v1.19.5 | ✅ |
+| 05 | Longhorn Storage | longhorn-system | v1.12.0 | ✅ |
+| 06 | ArgoCD | argocd | v9.6.0 | ✅ 4 apps Synced |
+| 07 | node-exporter DaemonSet | monitoring | v1.8.2 | ✅ 3/3 nodos |
+| 08 | ArgoCD GitOps Bootstrap | argocd | — | ✅ ApplicationSet |
+| 09 | HashiCorp Vault | vault | dev mode | ✅ K8s auth + políticas |
+| 10 | Jenkins CI/CD | ci-cd | v2.541.3 | ✅ PVC 20GB |
+| 11 | Argo Workflows | workload-automation | latest | 🔄 pendiente deploy |
+| 12 | AWX (Ansible Tower) | awx | v24.6.1 | ✅ postgres local-path |
+| 13 | Traefik v3 | traefik | v41.0.0 | ✅ 6 IngressRoutes |
+| 14 | Databases | databases | PG 18 / Redis 8.8 / Mongo 8.3 | ✅ |
+
+### Puertos NodePort
+
+| Servicio | Puerto | Estado |
+|---|---|---|
+| AWX UI | 30080 | ✅ |
+| Longhorn metrics | 30500 | ✅ |
+| Traefik HTTP | 30180 | ✅ |
+| Traefik HTTPS | 30543 | ✅ |
+| Traefik Dashboard | 30900 | ✅ |
+| Argo Workflows UI | 30888 | 🔄 pendiente |
+| Control-M (reservado) | 30843 | ⏳ imagen EPD |
+| Jenkins | 32000 | ✅ |
+
+### Hostnames .lab.internal (agregar en AdGuard DNS Rewrites → 10.10.20.101)
+
+```
+argocd.lab.internal, longhorn.lab.internal, hubble.lab.internal,
+vault.lab.internal, jenkins.lab.internal, awx.lab.internal,
+workflows.lab.internal, controlm.lab.internal
+grafana.lab.internal → 10.10.10.10 (T430)
+```
+
+### Credenciales (todas en Vault: token homelab-root)
+
+```
+secret/jenkins/config          → Jenkins admin
+secret/awx/admin               → AWX admin / RPGPNnrJKV3WimcmWFiDKtfO5WHi8gaC
+secret/homelab/cluster         → K3s API + ArgoCD
+secret/databases/postgresql    → PG homelab@postgresql.databases.svc:5432
+secret/databases/redis         → Redis redis-master.databases.svc:6379
+secret/databases/mongodb       → Mongo mongodb.databases.svc:27017
+secret/workload-automation/argo-workflows → Argo Workflows config
+```
+
+### IaC
+
+```
+Repo:     https://github.com/Vanguard94-RR/HomeLab.git
+Branch:   refactor/full-gitops-bootstrap
+Scripts:  ~/Documents/Personal/HomeLab/scripts/
+Módulos:  14 módulos, 4096 líneas
+Deploy:   sudo bash bootstrap.sh --role server --from 09
+```
+
+### Pendientes
+
+- [ ] Ejecutar módulo 11 (Argo Workflows)
+- [ ] DNS rewrites en AdGuard para hostnames .lab.internal
+- [ ] SSH keys en nodos K3s (eliminar password prompts)
+- [ ] Merge branch refactor/full-gitops-bootstrap → main
+- [ ] Prometheus targets para Argo Workflows, AWX, Vault, Jenkins
+- [ ] Swap físico NVMe 1TB en M720q (ventana mantenimiento)
+- [ ] Dell 5480 (10.10.20.100) — CP permanente cuando llegue
+- [ ] P52 (10.10.20.103) — worker3 ML/GPU cuando llegue
+- [ ] Control-M — imagen pendiente acceso EPD BMC
+
+---
+
 ## 1. Executive Summary
 
 This HomeLab is designed as an enterprise-style platform engineering environment. Its purpose is not only to run personal services, but to demonstrate production-grade skills across network architecture, Linux operations, virtualization, Kubernetes, GitOps, IAM, secrets management, CI/CD, platform observability, and security segmentation.
