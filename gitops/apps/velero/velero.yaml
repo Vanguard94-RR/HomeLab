@@ -25,20 +25,31 @@ metadata:
     helm.sh/chart: velero-12.1.0
 automountServiceAccountToken: true
 ---
-# Source: velero/templates/secret.yaml
-apiVersion: v1
-kind: Secret
+# Was a plaintext Secret (helm chart default, ini-format "cloud" credentials
+# file) — now synced from Vault via External Secrets Operator. See
+# gitops/apps/external-secrets/vault-secretstore.yaml for the store config.
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
 metadata:
   name: velero
   namespace: velero
   labels:
     app.kubernetes.io/name: velero
     app.kubernetes.io/instance: velero
-    app.kubernetes.io/managed-by: Helm
-    helm.sh/chart: velero-12.1.0
-type: Opaque
-data:
-  cloud: "W2RlZmF1bHRdCmF3c19hY2Nlc3Nfa2V5X2lkPW1pbmlvYWRtaW4KYXdzX3NlY3JldF9hY2Nlc3Nfa2V5PWFjOTE4YzcxYzc3ZWEzOTRjMGQ2MTc5OTliMThlYzY1Cg=="
+spec:
+  refreshInterval: 1h
+  secretStoreRef:
+    name: vault-backend
+    kind: ClusterSecretStore
+  target:
+    name: velero
+    template:
+      type: Opaque
+  data:
+    - secretKey: cloud
+      remoteRef:
+        key: homelab/velero-minio-credentials
+        property: cloud
 ---
 # Source: velero/templates/repo-maintenance-configmap.yaml
 apiVersion: v1

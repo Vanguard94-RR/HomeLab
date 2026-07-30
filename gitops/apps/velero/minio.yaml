@@ -11,20 +11,33 @@ kind: ServiceAccount
 metadata:
   name: "minio-sa"
 ---
-# Source: minio/templates/secrets.yaml
-apiVersion: v1
-kind: Secret
+# Was a plaintext Secret (helm chart default) — now synced from Vault via
+# External Secrets Operator instead of committed to git. See
+# gitops/apps/external-secrets/vault-secretstore.yaml for the store config.
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
 metadata:
   name: minio
   labels:
     app: minio
-    chart: minio-5.4.0
-    release: minio
-    heritage: Helm
-type: Opaque
-data:
-  rootUser: "bWluaW9hZG1pbg=="
-  rootPassword: "YWM5MThjNzFjNzdlYTM5NGMwZDYxNzk5OWIxOGVjNjU="
+spec:
+  refreshInterval: 1h
+  secretStoreRef:
+    name: vault-backend
+    kind: ClusterSecretStore
+  target:
+    name: minio
+    template:
+      type: Opaque
+  data:
+    - secretKey: rootUser
+      remoteRef:
+        key: homelab/minio
+        property: root-user
+    - secretKey: rootPassword
+      remoteRef:
+        key: homelab/minio
+        property: root-password
 ---
 # Source: minio/templates/configmap.yaml
 apiVersion: v1

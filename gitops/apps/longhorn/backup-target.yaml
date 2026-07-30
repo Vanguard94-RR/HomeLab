@@ -9,18 +9,37 @@
 #  Same MinIO instance as Velero (gitops/apps/velero/minio.yaml), separate
 #  bucket. The "default" BackupTarget object is created by Longhorn itself;
 #  this just patches its spec.
+#  The credential Secret is synced from Vault via External Secrets Operator
+#  instead of committed to git — see
+#  gitops/apps/external-secrets/vault-secretstore.yaml for the store config.
 # =============================================================================
-apiVersion: v1
-kind: Secret
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
 metadata:
   name: longhorn-minio-secret
   namespace: longhorn-system
-type: Opaque
-stringData:
-  AWS_ACCESS_KEY_ID: minioadmin
-  AWS_SECRET_ACCESS_KEY: ac918c71c77ea394c0d617999b18ec65
-  AWS_ENDPOINTS: http://minio.velero.svc.cluster.local:9000
-  AWS_CERT: ""
+spec:
+  refreshInterval: 1h
+  secretStoreRef:
+    name: vault-backend
+    kind: ClusterSecretStore
+  target:
+    name: longhorn-minio-secret
+    template:
+      type: Opaque
+  data:
+    - secretKey: AWS_ACCESS_KEY_ID
+      remoteRef:
+        key: homelab/longhorn-backup-target
+        property: aws-access-key-id
+    - secretKey: AWS_SECRET_ACCESS_KEY
+      remoteRef:
+        key: homelab/longhorn-backup-target
+        property: aws-secret-access-key
+    - secretKey: AWS_ENDPOINTS
+      remoteRef:
+        key: homelab/longhorn-backup-target
+        property: aws-endpoints
 ---
 apiVersion: longhorn.io/v1beta2
 kind: BackupTarget
