@@ -1,0 +1,17 @@
+# =============================================================================
+#  HomeLab -- VolumeSnapshotClass for Longhorn CSI driver
+#  The `velero.io/csi-volumesnapshot-class: "true"` label is how
+#  velero-plugin-for-csi auto-discovers which VolumeSnapshotClass to use
+#  for a given CSI driver during a backup with snapshotVolumes: true.
+#  sync-wave -1: needs the VolumeSnapshotClass CRD (-2) to exist first.
+# =============================================================================
+apiVersion: snapshot.storage.k8s.io/v1
+kind: VolumeSnapshotClass
+metadata:
+  name: longhorn-snapshot-vsc
+  labels:
+    velero.io/csi-volumesnapshot-class: "true"
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+driver: driver.longhorn.io
+deletionPolicy: Delete
