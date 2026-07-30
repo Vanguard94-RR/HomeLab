@@ -4,6 +4,14 @@
 #  velero-plugin-for-csi auto-discovers which VolumeSnapshotClass to use
 #  for a given CSI driver during a backup with snapshotVolumes: true.
 #  sync-wave -1: needs the VolumeSnapshotClass CRD (-2) to exist first.
+#  parameters.type: bak — "snap" (local, no backup target needed) seemed
+#  simpler at first, but a local snapshot is tied to its source volume:
+#  delete the source PVC/namespace and the snapshot becomes orphaned,
+#  useless for restore. That defeats the point of a DR backup. "bak" is
+#  a real Longhorn backup pushed to Longhorn's own Backup Target — set
+#  here to the same MinIO instance (bucket longhorn-backups, see
+#  BackupTarget "default" in longhorn-system, credential secret
+#  longhorn-minio-secret) — fully independent of the source volume.
 # =============================================================================
 apiVersion: snapshot.storage.k8s.io/v1
 kind: VolumeSnapshotClass
@@ -15,3 +23,5 @@ metadata:
     argocd.argoproj.io/sync-wave: "-1"
 driver: driver.longhorn.io
 deletionPolicy: Delete
+parameters:
+  type: bak

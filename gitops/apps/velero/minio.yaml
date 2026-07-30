@@ -1,7 +1,8 @@
 # =============================================================================
-#  HomeLab -- MinIO (S3-compatible backend for Velero backups)
+#  HomeLab -- MinIO (S3-compatible backend for Velero + Longhorn backups)
 #  Rendered from minio/minio chart v5.4.0 via `helm template`
-#  Bucket: velero-backups · Namespace destino: velero
+#  Buckets: velero-backups (Velero BSL), longhorn-backups (Longhorn BackupTarget)
+#  Namespace destino: velero
 # =============================================================================
 ---
 # Source: minio/templates/serviceaccount.yaml
@@ -147,6 +148,7 @@ data:
     
     # Create the buckets
     createBucket velero-backups "none" false false false
+    createBucket longhorn-backups "none" false false false
     
   add-user: |-
     #!/bin/sh
@@ -516,7 +518,7 @@ spec:
         release: minio
       annotations:
         checksum/secrets: 129c2cd093dfcba0821884671a75aa93b87ab3f7f7271cc52f540297643afe41
-        checksum/config: f32a9a70c9cfdd59769e1c3e4e45c6ef66f61a46f60d8db6e258fd07398462b9
+        checksum/config: df6b7ce9bea59b5b81a28117e9fa3efde65a340e5c6edf6cf7b88193a4cade6b
     spec:
       securityContext:
         

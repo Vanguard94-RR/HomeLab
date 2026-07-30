@@ -1,0 +1,33 @@
+# =============================================================================
+#  HomeLab -- Longhorn Backup Target (MinIO, bucket longhorn-backups)
+#  Required for VolumeSnapshotClass longhorn-snapshot-vsc (parameters.type:
+#  bak, see gitops/apps/velero/volumesnapshotclass.yaml) to work — Longhorn's
+#  CSI driver needs a real backup target to create remote, source-volume-
+#  independent backups (as opposed to "snap", which is a local snapshot tied
+#  to its source volume and useless once that volume is deleted — the whole
+#  point of a DR backup is surviving that).
+#  Same MinIO instance as Velero (gitops/apps/velero/minio.yaml), separate
+#  bucket. The "default" BackupTarget object is created by Longhorn itself;
+#  this just patches its spec.
+# =============================================================================
+apiVersion: v1
+kind: Secret
+metadata:
+  name: longhorn-minio-secret
+  namespace: longhorn-system
+type: Opaque
+stringData:
+  AWS_ACCESS_KEY_ID: minioadmin
+  AWS_SECRET_ACCESS_KEY: ac918c71c77ea394c0d617999b18ec65
+  AWS_ENDPOINTS: http://minio.velero.svc.cluster.local:9000
+  AWS_CERT: ""
+---
+apiVersion: longhorn.io/v1beta2
+kind: BackupTarget
+metadata:
+  name: default
+  namespace: longhorn-system
+spec:
+  backupTargetURL: s3://longhorn-backups@minio/
+  credentialSecret: longhorn-minio-secret
+  pollInterval: 5m0s
