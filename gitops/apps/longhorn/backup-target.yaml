@@ -25,21 +25,34 @@ spec:
     kind: ClusterSecretStore
   target:
     name: longhorn-minio-secret
+    creationPolicy: Owner
+    deletionPolicy: Retain
     template:
       type: Opaque
+      engineVersion: v2
+      mergePolicy: Replace
   data:
     - secretKey: AWS_ACCESS_KEY_ID
       remoteRef:
         key: homelab/longhorn-backup-target
         property: aws-access-key-id
+        conversionStrategy: Default
+        decodingStrategy: None
+        metadataPolicy: None
     - secretKey: AWS_SECRET_ACCESS_KEY
       remoteRef:
         key: homelab/longhorn-backup-target
         property: aws-secret-access-key
+        conversionStrategy: Default
+        decodingStrategy: None
+        metadataPolicy: None
     - secretKey: AWS_ENDPOINTS
       remoteRef:
         key: homelab/longhorn-backup-target
         property: aws-endpoints
+        conversionStrategy: Default
+        decodingStrategy: None
+        metadataPolicy: None
 ---
 apiVersion: longhorn.io/v1beta2
 kind: BackupTarget

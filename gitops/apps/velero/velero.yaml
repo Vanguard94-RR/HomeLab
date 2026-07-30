@@ -43,13 +43,20 @@ spec:
     kind: ClusterSecretStore
   target:
     name: velero
+    creationPolicy: Owner
+    deletionPolicy: Retain
     template:
       type: Opaque
+      engineVersion: v2
+      mergePolicy: Replace
   data:
     - secretKey: cloud
       remoteRef:
         key: homelab/velero-minio-credentials
         property: cloud
+        conversionStrategy: Default
+        decodingStrategy: None
+        metadataPolicy: None
 ---
 # Source: velero/templates/repo-maintenance-configmap.yaml
 apiVersion: v1

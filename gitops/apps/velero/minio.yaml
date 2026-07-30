@@ -27,17 +27,27 @@ spec:
     kind: ClusterSecretStore
   target:
     name: minio
+    creationPolicy: Owner
+    deletionPolicy: Retain
     template:
       type: Opaque
+      engineVersion: v2
+      mergePolicy: Replace
   data:
     - secretKey: rootUser
       remoteRef:
         key: homelab/minio
         property: root-user
+        conversionStrategy: Default
+        decodingStrategy: None
+        metadataPolicy: None
     - secretKey: rootPassword
       remoteRef:
         key: homelab/minio
         property: root-password
+        conversionStrategy: Default
+        decodingStrategy: None
+        metadataPolicy: None
 ---
 # Source: minio/templates/configmap.yaml
 apiVersion: v1
