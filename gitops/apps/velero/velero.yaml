@@ -3,10 +3,12 @@
 #  Rendered from vmware-tanzu/velero chart v12.1.0 via `helm template`
 #  Backend: MinIO (bucket velero-backups) · node-agent (kopia) para PV data
 #  Schedule: daily-full-backup 02:00, TTL 240h
-#  argocd.argoproj.io/sync-wave: -2 en RBAC/Job de upgrade-crds — el chart usa
-#  helm hooks para instalar CRDs, que ArgoCD no interpreta en fuente plain-YAML,
-#  así que se fuerza el orden manualmente para que las CRDs existan antes de
-#  crear BackupStorageLocation/Schedule.
+#  Las CRDs viven en crds.yaml (sync-wave -2), no en un Job — el chart normal
+#  instala CRDs via Job con helm hooks (pre-install), que ArgoCD no interpreta
+#  en fuente plain-YAML. El Job nunca corrió y el sync fallaba con
+#  "could not find velero.io/Schedule/BackupStorageLocation CRD". Se extrajeron
+#  las CRDs estáticas del chart (carpeta crds/, que Helm siempre omite en
+#  `helm template`) en vez de depender del Job.
 #  Namespace destino: velero
 # =============================================================================
 ---
@@ -390,110 +392,3 @@ spec:
   template:
     snapshotVolumes: true
     ttl: 240h0m0s
----
-# Source: velero/templates/upgrade-crds/serviceaccount-upgrade.yaml
-apiVersion: v1
-kind: ServiceAccount
-metadata:
-  name: velero-server-upgrade-crds
-  namespace: velero
-  annotations:
-    argocd.argoproj.io/sync-wave: "-2"
-    "helm.sh/hook": pre-install,pre-upgrade,pre-rollback
-    "helm.sh/hook-weight": "-4"
-    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
-  labels:
-    app.kubernetes.io/name: velero
-    app.kubernetes.io/instance: velero
-    app.kubernetes.io/managed-by: Helm
-    helm.sh/chart: velero-12.1.0
-automountServiceAccountToken: true
----
-# Source: velero/templates/upgrade-crds/clusterrole-upgrade.yaml
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
-metadata:
-  name: velero-upgrade-crds
-  annotations:
-    argocd.argoproj.io/sync-wave: "-2"
-    "helm.sh/hook": pre-install,pre-upgrade,pre-rollback
-    "helm.sh/hook-weight": "-5"
-    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
-  labels:
-    app.kubernetes.io/component: upgrade-crds
-    app.kubernetes.io/name: velero
-    app.kubernetes.io/instance: velero
-    app.kubernetes.io/managed-by: Helm
-    helm.sh/chart: velero-12.1.0
-rules:
-- apiGroups: 
-    - "apiextensions.k8s.io"
-  resources: 
-    - "customresourcedefinitions"
-  verbs: 
-    - create
-    - patch
-    - update
-    - get
-    - list
----
-# Source: velero/templates/upgrade-crds/clusterrolebinding-upgrade.yaml
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRoleBinding
-metadata:
-  name: velero-upgrade-crds
-  labels:
-    app.kubernetes.io/component: upgrade-crds
-    app.kubernetes.io/name: velero
-    app.kubernetes.io/instance: velero
-    app.kubernetes.io/managed-by: Helm
-    helm.sh/chart: velero-12.1.0
-  annotations:
-    argocd.argoproj.io/sync-wave: "-2"
-    "helm.sh/hook": pre-install,pre-upgrade,pre-rollback
-    "helm.sh/hook-weight": "-3"
-    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
-subjects:
-  - kind: ServiceAccount
-    namespace: velero
-    name: velero-server-upgrade-crds
-roleRef:
-  kind: ClusterRole
-  name: velero-upgrade-crds
-  apiGroup: rbac.authorization.k8s.io
----
-# Source: velero/templates/upgrade-crds/upgrade-crds.yaml
-apiVersion: batch/v1
-kind: Job
-metadata:
-  name: velero-upgrade-crds
-  namespace: velero
-  annotations:
-    argocd.argoproj.io/sync-wave: "-2"
-    "helm.sh/hook": pre-install,pre-upgrade,pre-rollback
-    "helm.sh/hook-weight": "5"
-    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
-  labels:
-    app.kubernetes.io/name: velero
-    app.kubernetes.io/instance: velero
-    app.kubernetes.io/managed-by: Helm
-    helm.sh/chart: velero-12.1.0
-spec:
-  backoffLimit: 3
-  template:
-    metadata:
-      name: velero-upgrade-crds
-    spec:
-      serviceAccountName: velero-server-upgrade-crds
-      automountServiceAccountToken: true
-      containers:
-        - name: velero
-          image: "docker.io/velero/velero:v1.18.1"
-          imagePullPolicy: IfNotPresent
-          command:
-            - /velero
-          args:
-            - install
-            - --crds-only
-            - --apply
-      restartPolicy: OnFailure
