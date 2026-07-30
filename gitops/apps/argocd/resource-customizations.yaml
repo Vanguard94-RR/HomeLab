@@ -1,0 +1,22 @@
+# =============================================================================
+#  HomeLab -- ArgoCD resource health customizations
+#  Bare-metal/NodePort cluster — Ingress objects never get a LoadBalancer
+#  status populated (no cloud LB), so ArgoCD's default Ingress health check
+#  waits forever ("waiting for healthy state of ... Ingress") even though
+#  the resource applied fine. Override it to assume Healthy.
+#  Server-side apply merges this into the existing argocd-cm (created by
+#  the ArgoCD install) without touching its other keys.
+# =============================================================================
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-cm
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: argocd
+data:
+  resource.customizations.health.networking.k8s.io_Ingress: |
+    hs = {}
+    hs.status = "Healthy"
+    hs.message = "Ingress assumed healthy (bare-metal/NodePort cluster, no LoadBalancer)"
+    return hs
