@@ -647,3 +647,27 @@ spec:
           resources:
             requests:
               memory: 128Mi
+---
+# MinIO Console UI ingress — minio-console.lab.internal
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: minio-console-ingress
+  namespace: velero
+  labels:
+    app.kubernetes.io/managed-by: argocd
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: web
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: minio-console.lab.internal
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: minio-console
+                port:
+                  number: 9001

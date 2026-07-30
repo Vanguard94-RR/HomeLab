@@ -1,0 +1,26 @@
+# =============================================================================
+#  HomeLab -- Alloy UI ingress
+#  Alloy's built-in pipeline/component graph UI (:12345) — alloy.lab.internal
+# =============================================================================
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: alloy-ingress
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/managed-by: argocd
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: web
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: alloy.lab.internal
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: alloy
+                port:
+                  number: 12345
